@@ -10,7 +10,7 @@ describe("ChallengeContract Tests", function () {
   let bettor2: Signer;
   let challenger: Signer;
 
-  const ethPriceFactorConversionUnits: bigint = BigInt(1000000000000000); // number of wei in one ETH
+  const ethPriceFactorConversionUnits: bigint = BigInt(1e14); // number of wei in one ETH
   const minimumUsdBetValue: bigint = BigInt(10) * ethPriceFactorConversionUnits;
 
   beforeEach(async function () {
@@ -58,17 +58,21 @@ describe("ChallengeContract Tests", function () {
 
     // it("does not allow a bet under the minimum USD value of ETH needed", async function () {
     //   const latestEthPrice = await challengeContract.connect(owner).getLatestPrice();
-    //   console.log("Latest ETH price: " + latestEthPrice);
-    //   const tinyBetAmount = parseEther("0.001"); // this is equal to ~$2.55 USD as of 10/25/2024
-    //   const minimumUsdBetValueFromContract = await challengeContract.minimumUsdValueOfBet();
-    //   console.log(`Minimum bet: ${minimumUsdBetValueFromContract}`);
-    //   console.log(`Tiny bet: ${tinyBetAmount}`);
-
+    //   const tinyBetAmount = 0.004 * Number(latestEthPrice); // 0.001 ETH
 
     //   await expect(
-    //     challengeContract.connect(challenger).placeBet(challenger.getAddress(), true, { value: tinyBetAmount })
+    //     challengeContract.connect(challenger).placeBet(challenger.getAddress(), true, { value: BigInt(tinyBetAmount) })
     //   ).to.be.revertedWith("Amount is less than minimum bet!")
     // });
+
+    it("allows a bet just above the minimum USD value of ETH needed", async function () {
+      const latestEthPrice = await challengeContract.connect(owner).getLatestPrice();
+      const tinyBetAmount = 0.005 * Number(latestEthPrice); // 0.005 ETH, equal to ~$12.50 at time of testing
+
+      await expect(
+        challengeContract.connect(challenger).placeBet(challenger.getAddress(), true, { value: BigInt(tinyBetAmount) })
+      ).not.to.be.reverted;
+    });
   })
 
 
@@ -115,6 +119,12 @@ describe("ChallengeContract Tests", function () {
       await challengeContract.connect(challenger).placeBet(challenger.getAddress(), true, { value: betAmount }); // wins half of bettor2's money
 
       await challengeContract.connect(challenger).startChallenge(100);
+    });
+
+    it("should not allow distribution of winnings before the challenge time has elapsed", async function () {      
+      await challengeContract.connect(owner).submitMeasurement(challenger.getAddress(), 10000);
+
+      await expect(challengeContract.connect(owner).distributeWinnings(challenger.getAddress())).to.be.revertedWith("Challenge time has not elapsed!");
     });
 
     it("should distribute winnings to bettors correctly after the challenge is completed", async function () {      

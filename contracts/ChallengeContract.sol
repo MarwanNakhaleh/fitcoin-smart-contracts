@@ -50,10 +50,8 @@ contract ChallengeContract is Ownable, ReentrancyGuard, IChallengeContract {
         _;
     }
 
-    modifier betIsGreaterThanOrEqualToMinimumBetValue(uint value)  {
-        uint256 ethPrice = getLatestPrice();
-        uint256 msgValueInUsd = (uint256(ethPrice) * value) / 1e18;
-        require(msgValueInUsd >= minimumUsdValueOfBet, "Amount is less than minimum bet!");
+    modifier betIsGreaterThanOrEqualToMinimumBetValue()  {
+        require(msg.value >= minimumUsdValueOfBet, "Amount is less than minimum bet!");
         _;
     }
 
@@ -118,7 +116,7 @@ contract ChallengeContract is Ownable, ReentrancyGuard, IChallengeContract {
         public 
         payable 
         onlyBettors 
-        betIsGreaterThanOrEqualToMinimumBetValue(msg.value)
+        betIsGreaterThanOrEqualToMinimumBetValue
         nonReentrant
     {
         require(challenges[_challenger].status == ChallengeStatus.NotStarted, "Challenge has already been started");
