@@ -28,16 +28,16 @@ interface IChallenge {
     /**
      * @dev Emitted when a challenger creates a challenge.
      * @param challenger The address of challenger who created the challenge.
+     * @param challengeId The ID of the challenge
      */
-    event ChallengeCreated(address indexed challenger);
+    event ChallengeCreated(address indexed challenger, uint256 indexed challengeId);
 
     /**
      * @dev Emitted when a challenger starts a challenge.
      * @param challenger The address of challenger who created the challenge.
-     * @param challengeType The type of challenge.
-     * @param targetMeasurement The targeted number to reach.
+     * @param challengeId The ID of the challenge
      */
-    event ChallengeStarted(address indexed challenger, uint8 indexed challengeType, uint256 startMeasurement, uint256 targetMeasurement);
+    event ChallengeStarted(address indexed challenger, uint256 indexed challengeId);
 
     /**
      * @dev Emitted when the minimum bet value is updated from the original value
@@ -45,6 +45,22 @@ interface IChallenge {
      * @param newValue The current minimum bet value.
      */
     event MinimumBetValueSet(uint256 oldValue, uint256 newValue);
+
+    /**
+     * @dev Emitted when a user makes a bet
+     * @param challengeId The challenge ID
+     * @param bettor The address that placed the bet
+     * @param bettingForChallenger true if the bet was placed in hopes that the challenger will win
+     * @param betAmount the amount of money bet for the challenger
+     */
+    event BetPlaced(uint256 challengeId, address bettor, bool bettingForChallenger, uint256 betAmount);
+
+    /**
+    * @notice Retrieves all challenge IDs for a specific challenger.
+    * @param challenger The address of the challenger.
+    * @return An array of challenge IDs created by the challenger.
+    */
+    function getChallengesForChallenger(address challenger) external view returns (uint256[] memory);
 
     /**
      * @notice Whitelists an address to begin creating challenges.
@@ -85,7 +101,6 @@ interface IChallenge {
 
     /**
      * @notice Creates a new challenge for a whitelisted challenger, but does not start a challenge until requirements are met
-     * @param _challengeStartTime the time at which the challenge starts
      * @param _lengthOfChallenge The time length of the challenge in seconds
      * @param _challengeMetrics The set of metrics the challenger wants to reach in the challenge time frame
      * @param _targetMeasurementsForEachMetric The set of target measurements for each metric the challenger wants to achieve
@@ -94,7 +109,7 @@ interface IChallenge {
      * - The caller is on the challenger whitelist
      * - The challenger does not already have an active challenge
      */
-    function createChallenge(uint256 _challengeStartTime, uint256 _lengthOfChallenge, uint8[] calldata _challengeMetrics, uint256[] calldata _targetMeasurementsForEachMetric) external;
+    function createChallenge(uint256 _lengthOfChallenge, uint8[] calldata _challengeMetrics, uint256[] calldata _targetMeasurementsForEachMetric) external returns(uint256);
     
     /** 
      * @notice Provides the information necessary to start a challenge once requirements are met

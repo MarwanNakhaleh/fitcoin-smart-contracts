@@ -2,8 +2,8 @@
 pragma solidity ^0.8.22;
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 import { AggregatorV3Interface } from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
@@ -56,7 +56,7 @@ contract Challenge is
     /// TODO: match the USD number coming in to the actual amount of ETH needed at the time of calculation
     uint256 internal minimumUsdValueOfBet;
 
-    uint32 internal maximumNumberOfBettorsPerChallenge;
+    uint32 constant internal maximumNumberOfBettorsPerChallenge = 100;
 
     /// @notice Whitelisted challengers who can participate in challenges
     mapping(address => bool) public challengerWhitelist;
@@ -73,19 +73,19 @@ contract Challenge is
 
     /// @notice Mapping to get the challenge ID of a challenger's currently active challenge
     /// @dev When a challenge finishes, we will change the value in the mapping back to 0
-    mapping(address => uint256) internal challengerToActiveChallenge;
+    mapping(address => uint256) public challengerToActiveChallenge;
     
     // ==================================== //
     //  Challenge metadata data structures  //
     // ==================================== //
 
-    uint256 internal latestChallengeId;
+    uint256 public latestChallengeId;
     
     /// @notice Mapping to get a challenge's owner by challenge ID
-    mapping(uint256 => address) internal challengeToChallenger;
+    mapping(uint256 => address) public challengeToChallenger;
 
     /// @notice Mapping to get whether or not a challenge's winnings have been paid
-    mapping(uint256 => uint8) internal challengeToWinningsPaid;
+    mapping(uint256 => uint8) public challengeToWinningsPaid;
 
     /// @notice Mapping to get the target measurements for a challenge by challenge ID
     mapping(uint256 => mapping(uint8 => uint256)) challengeToTargetMetricMeasurements;
@@ -103,7 +103,7 @@ contract Challenge is
     mapping(uint256 => uint256) public challengeToChallengeLength;
     
     /// @notice Mapping to get a challenge's status by ID
-    mapping(uint256 => uint8) internal challengeToChallengeStatus;
+    mapping(uint256 => uint8) public challengeToChallengeStatus;
 
     // ==================================== //
     //  Challenge bet info data structures  //
@@ -138,6 +138,9 @@ contract Challenge is
 
     /// @dev Error thrown when a challenge is no longer allowed to be modified
     error ChallengeCannotBeModified();
+
+    /// @dev Error thrown when a challenge is no longer allowed to be modified
+    error ChallengeCanOnlyBeModifiedByChallenger(uint256 challengeId, address caller, address challenger);
 
     /// @dev Error thrown when a challenge is already active when it must be inactive for the action requested
     error ChallengeIsActive(uint256 activeChallengeId);
@@ -210,7 +213,7 @@ contract Challenge is
         address _dataFeedAddress
     ) external initializer {
         if (_minimumBetValue == 0) revert MinimumBetAmountTooSmall();
-        __Ownable_init();
+        __Ownable_init(msg.sender);
         transferOwnership(msg.sender);
         __Pausable_init();
         __ReentrancyGuard_init();
@@ -226,6 +229,13 @@ contract Challenge is
     // ============================ //
     //      Interface Functions     //
     // ============================ //
+
+    /**
+     * @inheritdoc IChallenge
+     */
+    function getChallengesForChallenger(address challenger) external view returns (uint256[] memory) {
+        return challengerToChallenges[challenger];
+    }
 
     /**
      * @inheritdoc IChallenge
@@ -274,11 +284,12 @@ contract Challenge is
     /**
      * @inheritdoc IChallenge
      */
-    function createChallenge(uint256 _challengeStartTime, uint256 _lengthOfChallenge, uint8[] calldata _challengeMetrics, uint256[] calldata _targetMeasurementsForEachMetric)
+    function createChallenge(uint256 _lengthOfChallenge, uint8[] calldata _challengeMetrics, uint256[] calldata _targetMeasurementsForEachMetric)
         external
         override
         nonReentrant
         onlyChallengers(msg.sender)
+        returns(uint256)
     {
         address challenger = msg.sender;
 
@@ -299,9 +310,10 @@ contract Challenge is
                 i++;
             }
         }
-        challengeToStartTime[currentChallengeId] = _challengeStartTime;
         challengeToChallengeLength[currentChallengeId] = _lengthOfChallenge;
         challengeToChallengeStatus[currentChallengeId] = STATUS_INACTIVE;
+        
+        return currentChallengeId;
     }
 
     /**
@@ -361,6 +373,8 @@ contract Challenge is
         }
 
         challengeToBettors[_challengeId].push(caller);
+        
+        emit BetPlaced(_challengeId, caller, _bettingFor, value);
     }
 
     /**
@@ -372,7 +386,8 @@ contract Challenge is
         nonReentrant
         onlyBettors(msg.sender)
     {
-        // TODO: Fill in after refactoring placeBet() to use a vault
+        address caller = msg.sender;
+        if (challengeToBetsFor[_challengeId][caller] == 0 && challengeToBetsAgainst[_challengeId][caller] == 0) revert BettorCannotUpdateBet();
     }
 
     /**

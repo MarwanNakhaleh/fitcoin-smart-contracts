@@ -1,3 +1,5 @@
+require("@openzeppelin/hardhat-upgrades");
+
 import { config as dotEnvConfig } from "dotenv";
 
 import { HardhatUserConfig } from "hardhat/config";
