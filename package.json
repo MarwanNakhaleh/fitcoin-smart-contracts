@@ -1,15 +1,24 @@
 {
   "name": "hardhat-project",
+  "scripts": {
+    "doc": "hardhat doc",
+    "typechain": "hardhat typechain",
+    "test": "hardhat typechain && hardhat test",
+    "clean": "rm -rf typechain-types && rm -rf cache && hardhat clean"
+  },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/hardhat-upgrades": "^3.9.0",
     "hardhat": "^2.22.14"
   },
   "dependencies": {
     "@chainlink/contracts": "^1.3.0",
     "@openzeppelin/contracts": "^5.1.0",
     "@openzeppelin/contracts-upgradeable": "^5.1.0",
-    "@openzeppelin/hardhat-upgrades": "^3.5.0",
     "dotenv": "^16.4.5",
     "solidity-docgen": "^0.6.0-beta.36"
+  },
+  "overrides": {
+    "elliptic": "^6.6.1"
   }
 }

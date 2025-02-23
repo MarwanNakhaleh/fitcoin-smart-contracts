@@ -1,4 +1,4 @@
-require("@openzeppelin/hardhat-upgrades");
+import "@openzeppelin/hardhat-upgrades";
 
 import { config as dotEnvConfig } from "dotenv";
 
@@ -15,6 +15,11 @@ const config: HardhatUserConfig = {
       optimizer: {
         enabled: true,
         runs: 100,
+        details: {
+          yulDetails: {
+            optimizerSteps: "u",
+          },
+        },
       },
       viaIR: true,
     }
@@ -26,7 +31,8 @@ const config: HardhatUserConfig = {
   networks: {
     hardhat: {
       forking: {
-        url: process.env.MAINNET_RPC_URL as string
+        url: process.env.MAINNET_RPC_URL as string,
+        blockNumber: 4776540
       }
     }
   }

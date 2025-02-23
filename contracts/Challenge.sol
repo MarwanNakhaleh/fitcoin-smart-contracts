@@ -146,7 +146,10 @@ contract Challenge is
     error ChallengeIsActive(uint256 activeChallengeId);
 
     /// @dev Error thrown when a challenge is not active when it must be active for the action requested
-    error ChallengeIsNotActive(uint256 challengeId);
+    error ChallengeIsNotActive(uint256 challengeId, uint8 challengeStatus);
+
+    /// @dev Error thrown when a challenge is expired when it must not be expired for the action requested
+    error ChallengeIsExpired(uint256 challengeId);
 
     /// @dev Error thrown when there is a mismatch between the number of challenge metrics and the number of measurements provided
     error MalformedChallengeMetricsProvided();
@@ -213,10 +216,10 @@ contract Challenge is
         address _dataFeedAddress
     ) external initializer {
         if (_minimumBetValue == 0) revert MinimumBetAmountTooSmall();
+        __ReentrancyGuard_init();
+        __Pausable_init();
         __Ownable_init(msg.sender);
         transferOwnership(msg.sender);
-        __Pausable_init();
-        __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
 
         minimumUsdValueOfBet = _minimumBetValue;
@@ -347,6 +350,8 @@ contract Challenge is
         onlyBettors(msg.sender)
     {
         if (challengeToChallengeStatus[_challengeId] == STATUS_ACTIVE) revert ChallengeIsActive(_challengeId);
+        if (msg.value < minimumUsdValueOfBet) revert MinimumBetAmountTooSmall();
+
         unchecked {
             uint256 totalBettorsOnChallenge = challengeToNumberOfBettorsFor[_challengeId] + challengeToNumberOfBettorsAgainst[_challengeId];
             if (totalBettorsOnChallenge >= maximumNumberOfBettorsPerChallenge) revert TooManyBettors();
@@ -398,20 +403,21 @@ contract Challenge is
         onlyChallengers(msg.sender)
         nonReentrant 
     {
+        address caller = msg.sender;
+        if (challengeToChallenger[_challengeId] != caller) revert ChallengeCanOnlyBeModifiedByChallenger(_challengeId, caller, challengeToChallenger[_challengeId]);
+
         if (challengeToIncludedMetrics[_challengeId].length != _submittedMeasurements.length) revert MalformedChallengeMetricsProvided();
-        if (challengeToChallengeStatus[_challengeId] != STATUS_ACTIVE) revert ChallengeIsNotActive(_challengeId);
+        if (challengeToChallengeStatus[_challengeId] != STATUS_ACTIVE) revert ChallengeIsNotActive(_challengeId, challengeToChallengeStatus[_challengeId]);
 
         uint256 timestamp = block.timestamp;
-        unchecked {
-            if (challengeToStartTime[_challengeId] + challengeToChallengeLength[_challengeId] >= timestamp){
-                challengeToChallengeStatus[_challengeId] = STATUS_EXPIRED;
-                revert ChallengeIsNotActive(_challengeId);
-            }
+        if (timestamp >= (challengeToStartTime[_challengeId] + challengeToChallengeLength[_challengeId])) {
+            challengeToChallengeStatus[_challengeId] = STATUS_EXPIRED;
+            revert ChallengeIsExpired(_challengeId);
         }
 
         for (uint256 i = 0; i < _submittedMeasurements.length; ) {
             uint8 currentMetric = challengeToIncludedMetrics[_challengeId][i];
-            challengeToTargetMetricMeasurements[_challengeId][currentMetric] = _submittedMeasurements[i];
+            challengeToFinalMetricMeasurements[_challengeId][currentMetric] = _submittedMeasurements[i];
             unchecked {
                 i++;
             }
@@ -419,15 +425,20 @@ contract Challenge is
     }
 
     function distributeWinnings(uint256 _challengeId) external onlyOwner {
-        if (challengeToChallengeStatus[_challengeId] == STATUS_ACTIVE) revert ChallengeIsActive(_challengeId);
+        uint256 timestamp = block.timestamp;
+        if (timestamp >= (challengeToStartTime[_challengeId] + challengeToChallengeLength[_challengeId])){
+            challengeToChallengeStatus[_challengeId] = STATUS_EXPIRED;
+        } else {
+            revert ChallengeIsActive(_challengeId);
+        }
+        if (challengeToChallengeStatus[_challengeId] != STATUS_EXPIRED) revert ChallengeIsNotActive(_challengeId, challengeToChallengeStatus[_challengeId]);
         if (challengeToWinningsPaid[_challengeId] > 0) revert WinningsAlreadyPaid(_challengeId);
 
-        challengeToChallengeStatus[_challengeId] == STATUS_EXPIRED;
-
         bool challengeWon = true;
-        for(uint8 i = 0; i < challengeToIncludedMetrics[_challengeId].length; ) {
+        for(uint8 i = 0; i < challengeToIncludedMetrics[_challengeId].length;) {
             if (challengeToFinalMetricMeasurements[_challengeId][i] < challengeToTargetMetricMeasurements[_challengeId][i]) {
                 challengeWon = false;
+                challengeToChallengeStatus[_challengeId] = STATUS_CHALLENGER_LOST;
                 break;
             }
             unchecked {
@@ -435,7 +446,47 @@ contract Challenge is
             }
         }
         
-        // TODO: Distribute winnings from the vault
+        uint256 totalWinningPool;
+        address[] memory bettors = challengeToBettors[_challengeId];
+        
+        if (challengeWon) {
+            challengeToChallengeStatus[_challengeId] = STATUS_CHALLENGER_WON;
+            totalWinningPool = challengeToTotalAmountBetAgainst[_challengeId];
+            
+            // Distribute winnings proportionally to those who bet FOR the challenger
+            for (uint256 i = 0; i < bettors.length;) {
+                address bettor = bettors[i];
+                uint256 betForAmount = challengeToBetsFor[_challengeId][bettor];
+                if (betForAmount > 0) {
+                    // Calculate share of winnings based on proportion of winning bets
+                    uint256 share = (betForAmount * totalWinningPool) / challengeToTotalAmountBetFor[_challengeId];
+                    // Return original bet plus share of winnings
+                    (bool success,) = payable(bettor).call{value: betForAmount + share}("");
+                    require(success, "Failed to send winnings");
+                }
+                unchecked { i++; }
+            }
+        } else {
+            challengeToChallengeStatus[_challengeId] = STATUS_CHALLENGER_LOST;
+            totalWinningPool = challengeToTotalAmountBetFor[_challengeId];
+            
+            // Distribute winnings proportionally to those who bet AGAINST the challenger
+            for (uint256 i = 0; i < bettors.length;) {
+                address bettor = bettors[i];
+                uint256 betAgainstAmount = challengeToBetsAgainst[_challengeId][bettor];
+                if (betAgainstAmount > 0) {
+                    // Calculate share of winnings based on proportion of winning bets
+                    uint256 share = (betAgainstAmount * totalWinningPool) / challengeToTotalAmountBetAgainst[_challengeId];
+                    // Return original bet plus share of winnings
+                    (bool success,) = payable(bettor).call{value: betAgainstAmount + share}("");
+                    require(success, "Failed to send winnings");
+                }
+                unchecked { i++; }
+            }
+        }
+
+        challengeToWinningsPaid[_challengeId] = 1;
+        challengerToActiveChallenge[challengeToChallenger[_challengeId]] = 0;
     }
     
     // ============================ //
