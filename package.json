@@ -2,8 +2,8 @@
   "name": "hardhat-project",
   "scripts": {
     "doc": "hardhat doc",
-    "typechain": "hardhat typechain",
-    "test": "hardhat typechain && hardhat test",
+    "build": "hardhat compile",
+    "test": "hardhat compile && hardhat test",
     "clean": "rm -rf typechain-types && rm -rf cache && hardhat clean"
   },
   "devDependencies": {

@@ -1,10 +1,11 @@
 import { ethers, upgrades } from "hardhat";
-import { AddressLike, Signer, parseEther, BigNumberish } from "ethers";
+import { AddressLike, Signer, parseEther, BigNumberish, EventLog } from "ethers";
 import { expect } from "chai";
-import { Challenge, Challenge__factory } from "../typechain";
+import { Challenge, Challenge__factory, Vault } from "../typechain";
 
 describe("Challenge Tests", function () {
   let challengeContract: Challenge;
+  let vaultContract: Vault;
   let owner: Signer;
   let bettor: Signer;
   let bettor2: Signer;
@@ -30,10 +31,18 @@ describe("Challenge Tests", function () {
 
     challengeContract = await upgrades.deployProxy(
       ChallengeFactory,
-      [minimumUsdBetValue, mockPriceFeedAddress], // Use mock address here
-      { initializer: 'initialize' } // Specify the initializer function
+      [minimumUsdBetValue, mockPriceFeedAddress],
+      { initializer: 'initialize' } 
     );
     await challengeContract.waitForDeployment();
+    const challengeContractAddress = await challengeContract.getAddress();
+
+    const VaultFactory = await ethers.getContractFactory("Vault");
+    vaultContract = await upgrades.deployProxy(VaultFactory, [challengeContractAddress], { initializer: 'initialize' });
+    await vaultContract.waitForDeployment();
+
+    await challengeContract.connect(owner).setVault(await vaultContract.getAddress());
+
     challengerAddress = await challenger.getAddress();
   });
 
@@ -144,18 +153,16 @@ describe("Challenge Tests", function () {
       const challengeId = challengeIds[0];
       
       const initialChallengerBalance = await ethers.provider.getBalance(challenger.getAddress());
-      console.log("initial Challenger Balance", initialChallengerBalance);
 
       // Place bet for the challenger
       await challengeContract.connect(challenger).placeBet(challengeId, true, { value: betAmount });
 
       // Check the contract balance to ensure the bet amount was transferred
-      const contractBalanceAfterBet = await ethers.provider.getBalance(challengeContract.getAddress());
-      expect(contractBalanceAfterBet).to.equal(betAmount);
+      const vaultBalance = await vaultContract.getBalance(false); // false indicates ETH
+      expect(vaultBalance).to.equal(betAmount);
 
       // Check the challenger's balance after placing the bet
       const challengerBalanceAfterBetting = await ethers.provider.getBalance(challenger.getAddress());
-      console.log("challenger Balance after betting", challengerBalanceAfterBetting);
 
       // The challenger's balance should be reduced by the bet amount plus gas fees
       expect(challengerBalanceAfterBetting).to.be.lessThan(initialChallengerBalance - betAmount);
@@ -183,7 +190,7 @@ describe("Challenge Tests", function () {
       await challengeContract.connect(challenger).createChallenge(BigInt(60 * 60), [CHALLENGE_STEPS, CHALLENGE_MILEAGE], [10000, 5]);
       
       latestEthPrice = await challengeContract.connect(owner).getLatestPrice();
-      betAmount = BigInt(Number(latestEthPrice));
+      betAmount = parseEther("1");
 
       initialBettorBalance = await ethers.provider.getBalance(bettor.getAddress());
       initialBettor2Balance = await ethers.provider.getBalance(bettor2.getAddress());
@@ -238,24 +245,35 @@ describe("Challenge Tests", function () {
       const initialBettor2Balance = await ethers.provider.getBalance(bettor2.getAddress());
       const initialChallengerBalance = await ethers.provider.getBalance(challengerAddress);
 
+      // Place bets
       const bettorPlaceBetTx = await challengeContract.connect(bettor).placeBet(challengeId, true, { value: betAmount });
+      await bettorPlaceBetTx.wait();
+      const bettorBalanceAfterBetting = await ethers.provider.getBalance(bettor.getAddress());
+
       const bettor2PlaceBetTx = await challengeContract.connect(bettor2).placeBet(challengeId, false, { value: betAmount });
+      await bettor2PlaceBetTx.wait();
+      const bettor2BalanceAfterBetting = await ethers.provider.getBalance(bettor2.getAddress());
+
       const challengerPlaceBetTx = await challengeContract.connect(challenger).placeBet(challengeId, true, { value: betAmount });
+      await challengerPlaceBetTx.wait();
+      const challengerBalanceAfterBetting = await ethers.provider.getBalance(challengerAddress);
 
-      const bettorBalanceAfterPlacingBets = await ethers.provider.getBalance(bettor.getAddress());
-      const bettor2BalanceAfterPlacingBets = await ethers.provider.getBalance(bettor2.getAddress());
-      const challengerBalanceAfterPlacingBets = await ethers.provider.getBalance(challengerAddress);
-
+      // Start and submit measurements for the challenge
       await challengeContract.connect(challenger).startChallenge(challengeId);
       await challengeContract.connect(challenger).submitMeasurements(challengeId, [10000, 5]);
 
+      // Move time forward to simulate challenge end
       const pastTimestamp = (await ethers.provider.getBlock('latest') || {timestamp: 0}).timestamp + (3600 + 1);
       await ethers.provider.send("evm_setNextBlockTimestamp", [pastTimestamp]);
       await ethers.provider.send("evm_mine", []);
 
+      const vaultBalanceBefore = await vaultContract.getBalance(false);
+      
+      // Distribute winnings
       await challengeContract.connect(owner).distributeWinnings(challengeId);
-      const challengeStatus = await challengeContract.challengeToChallengeStatus(challengeId);
-      expect(challengeStatus).to.equal(3);
+
+      const vaultBalanceAfter = await vaultContract.getBalance(false);
+      expect(vaultBalanceAfter).to.be.below(vaultBalanceBefore);
 
       // Capture final balances
       const finalBettorBalance = await ethers.provider.getBalance(bettor.getAddress());
@@ -265,11 +283,10 @@ describe("Challenge Tests", function () {
       // Calculate expected winnings
       const expectedBettorWinnings = betAmount + (betAmount / BigInt(2));
       const expectedChallengerWinnings = betAmount + (betAmount / BigInt(2));
-
       // Adjust assertions to account for gas costs
-      //expect(finalBettorBalance).to.equal(initialBettorBalance + expectedBettorWinnings); // Allow for gas cost variance
-      expect(finalBettor2Balance).to.equal(bettor2BalanceAfterPlacingBets);
-      //expect(finalChallengerBalance).to.equal(initialChallengerBalance + expectedChallengerWinnings); 
+      expect(finalBettorBalance).to.equal(bettorBalanceAfterBetting + expectedBettorWinnings);
+      expect(finalChallengerBalance).to.be.closeTo(challengerBalanceAfterBetting + expectedChallengerWinnings, parseEther("0.001"));
+      expect(finalBettor2Balance).to.equal(bettor2BalanceAfterBetting);
     });
   })
 });

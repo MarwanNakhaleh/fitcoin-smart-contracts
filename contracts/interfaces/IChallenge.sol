@@ -56,6 +56,20 @@ interface IChallenge {
     event BetPlaced(uint256 challengeId, address bettor, bool bettingForChallenger, uint256 betAmount);
 
     /**
+     * @dev Emitted when the gas used to distribute winnings is logged
+     * @param gasUsed The amount of gas used to distribute winnings
+     */
+    event GasUsed(address indexed bettor, uint256 gasUsed);
+
+    /**
+     * @dev Emitted when the winnings are distributed
+     * @param challengeId The challenge ID
+     * @param bettor The address that received the winnings
+     * @param share The amount of winnings received
+     */
+    event WinningsDistributed(uint256 challengeId, address bettor, uint256 share);
+
+    /**
     * @notice Retrieves all challenge IDs for a specific challenger.
     * @param challenger The address of the challenger.
     * @return An array of challenge IDs created by the challenger.

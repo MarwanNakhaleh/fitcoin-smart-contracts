@@ -9,6 +9,7 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import { AggregatorV3Interface } from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 
 import "./interfaces/IChallenge.sol";
+import "./interfaces/IVault.sol";
 
 contract Challenge is 
     IChallenge,
@@ -45,6 +46,9 @@ contract Challenge is
 
     /// @notice the data feed allowing us to determine the current price of ETH to set a minimum amount of ETH required to fulfill the minimum USD value of the bet
     AggregatorV3Interface internal dataFeed;
+
+    /// @notice the vault contract
+    IVault internal vault;
 
     /// @notice the minimum number of total bettors on a challenge
     uint256 constant MINIMUM_NUMBER_OF_BETTORS_AGAINST = 1;
@@ -120,6 +124,9 @@ contract Challenge is
     // ============================ //
     //           Errors             //
     // ============================ //
+
+    /// @dev error thrown when the vault is not set
+    error VaultNotSet();
 
     /// @dev Error thrown when a non-whitelisted address attempts to do a challenger action
     error ChallengerNotInWhitelist();
@@ -198,6 +205,12 @@ contract Challenge is
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
+    }
+
+    /// @notice Sets the vault contract
+    function setVault(address _vault) external onlyOwner {
+        if (_vault == address(0)) revert VaultNotSet();
+        vault = IVault(_vault);
     }
 
     /**
@@ -351,6 +364,7 @@ contract Challenge is
     {
         if (challengeToChallengeStatus[_challengeId] == STATUS_ACTIVE) revert ChallengeIsActive(_challengeId);
         if (msg.value < minimumUsdValueOfBet) revert MinimumBetAmountTooSmall();
+        if (address(vault) == address(0)) revert VaultNotSet();
 
         unchecked {
             uint256 totalBettorsOnChallenge = challengeToNumberOfBettorsFor[_challengeId] + challengeToNumberOfBettorsAgainst[_challengeId];
@@ -362,6 +376,7 @@ contract Challenge is
         if (challengeToBetsFor[_challengeId][caller] != 0 || challengeToBetsAgainst[_challengeId][caller] != 0) revert BettorCannotUpdateBet();
         
         uint256 value = msg.value;
+        vault.depositETH{value: msg.value}();
 
         if(_bettingFor) {
             unchecked {
@@ -426,67 +441,53 @@ contract Challenge is
 
     function distributeWinnings(uint256 _challengeId) external onlyOwner {
         uint256 timestamp = block.timestamp;
-        if (timestamp >= (challengeToStartTime[_challengeId] + challengeToChallengeLength[_challengeId])){
-            challengeToChallengeStatus[_challengeId] = STATUS_EXPIRED;
-        } else {
+        if (timestamp < (challengeToStartTime[_challengeId] + challengeToChallengeLength[_challengeId])) {
             revert ChallengeIsActive(_challengeId);
         }
-        if (challengeToChallengeStatus[_challengeId] != STATUS_EXPIRED) revert ChallengeIsNotActive(_challengeId, challengeToChallengeStatus[_challengeId]);
+        uint256 initialGas = gasleft();
+        if (challengeToChallengeStatus[_challengeId] != STATUS_EXPIRED) {
+            challengeToChallengeStatus[_challengeId] = STATUS_EXPIRED;
+            uint256 gasUsed = initialGas - gasleft();
+            emit GasUsed(owner(), gasUsed);
+        }
+        
         if (challengeToWinningsPaid[_challengeId] > 0) revert WinningsAlreadyPaid(_challengeId);
 
         bool challengeWon = true;
-        for(uint8 i = 0; i < challengeToIncludedMetrics[_challengeId].length;) {
+        for (uint8 i = 0; i < challengeToIncludedMetrics[_challengeId].length;) {
             if (challengeToFinalMetricMeasurements[_challengeId][i] < challengeToTargetMetricMeasurements[_challengeId][i]) {
                 challengeWon = false;
-                challengeToChallengeStatus[_challengeId] = STATUS_CHALLENGER_LOST;
                 break;
             }
-            unchecked {
-                i++;
-            }
+            unchecked { i++; }
         }
         
-        uint256 totalWinningPool;
+        uint256 totalAmountToSplit;
+        uint256 totalAmountBetCorrectly;
         address[] memory bettors = challengeToBettors[_challengeId];
         
         if (challengeWon) {
             challengeToChallengeStatus[_challengeId] = STATUS_CHALLENGER_WON;
-            totalWinningPool = challengeToTotalAmountBetAgainst[_challengeId];
-            
-            // Distribute winnings proportionally to those who bet FOR the challenger
-            for (uint256 i = 0; i < bettors.length;) {
-                address bettor = bettors[i];
-                uint256 betForAmount = challengeToBetsFor[_challengeId][bettor];
-                if (betForAmount > 0) {
-                    // Calculate share of winnings based on proportion of winning bets
-                    uint256 share = (betForAmount * totalWinningPool) / challengeToTotalAmountBetFor[_challengeId];
-                    // Return original bet plus share of winnings
-                    (bool success,) = payable(bettor).call{value: betForAmount + share}("");
-                    require(success, "Failed to send winnings");
-                }
-                unchecked { i++; }
-            }
+            totalAmountToSplit = challengeToTotalAmountBetAgainst[_challengeId];
+            totalAmountBetCorrectly = challengeToTotalAmountBetFor[_challengeId];
         } else {
             challengeToChallengeStatus[_challengeId] = STATUS_CHALLENGER_LOST;
-            totalWinningPool = challengeToTotalAmountBetFor[_challengeId];
-            
-            // Distribute winnings proportionally to those who bet AGAINST the challenger
-            for (uint256 i = 0; i < bettors.length;) {
-                address bettor = bettors[i];
-                uint256 betAgainstAmount = challengeToBetsAgainst[_challengeId][bettor];
-                if (betAgainstAmount > 0) {
-                    // Calculate share of winnings based on proportion of winning bets
-                    uint256 share = (betAgainstAmount * totalWinningPool) / challengeToTotalAmountBetAgainst[_challengeId];
-                    // Return original bet plus share of winnings
-                    (bool success,) = payable(bettor).call{value: betAgainstAmount + share}("");
-                    require(success, "Failed to send winnings");
-                }
-                unchecked { i++; }
-            }
+            totalAmountToSplit = challengeToTotalAmountBetFor[_challengeId];
+            totalAmountBetCorrectly = challengeToTotalAmountBetAgainst[_challengeId];
         }
-
-        challengeToWinningsPaid[_challengeId] = 1;
-        challengerToActiveChallenge[challengeToChallenger[_challengeId]] = 0;
+        
+        for (uint256 i = 0; i < bettors.length;) {
+            address bettor = bettors[i];
+            uint256 betAmount = challengeWon ? challengeToBetsFor[_challengeId][bettor] : challengeToBetsAgainst[_challengeId][bettor];
+            if (betAmount > 0) {
+                uint256 share = (betAmount * totalAmountToSplit) / totalAmountBetCorrectly;
+                vault.withdrawFunds(payable(bettor), betAmount + share, false);
+                emit WinningsDistributed(_challengeId, bettor, share);
+            }
+            unchecked { i++; }
+        }
+        
+        challengeToWinningsPaid[_challengeId] = 1; // 1 for true, 0 for false. Uint8 is more gas-efficient than bool.
     }
     
     // ============================ //
