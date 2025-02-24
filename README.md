@@ -11,6 +11,13 @@ npx hardhat typechain
 npx hardhat test
 ```
 
+## Deploying
+
+Local
+```shell
+npx hardhat run scripts/DeployContracts.ts --network hardhat
+```
+
 ## Useful links for figuring these things out
 ### Testing against Chainlink price oracles
 * https://blog.chain.link/testing-chainlink-smart-contracts/

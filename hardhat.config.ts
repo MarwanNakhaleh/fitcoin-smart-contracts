@@ -1,5 +1,5 @@
 import "@openzeppelin/hardhat-upgrades";
-
+import "@nomicfoundation/hardhat-ignition-ethers";
 import { config as dotEnvConfig } from "dotenv";
 
 import { HardhatUserConfig } from "hardhat/config";
@@ -34,7 +34,11 @@ const config: HardhatUserConfig = {
         url: process.env.MAINNET_RPC_URL as string,
         blockNumber: 4776540
       }
-    }
+    },
+    running: {
+      url: "http://localhost:8545",
+      chainId: 1337,
+    },
   }
 };
 
