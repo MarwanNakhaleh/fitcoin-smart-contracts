@@ -113,28 +113,17 @@ interface IChallenge {
      */
     function changeMinimumBetValue(uint256 _newMinimumValue) external;
 
-    /**
-     * @notice Creates a new challenge for a whitelisted challenger, but does not start a challenge until requirements are met
-     * @param _lengthOfChallenge The time length of the challenge in seconds
-     * @param _challengeMetrics The set of metrics the challenger wants to reach in the challenge time frame
-     * @param _targetMeasurementsForEachMetric The set of target measurements for each metric the challenger wants to achieve
-     *
-     * Requirements:
-     * - The caller is on the challenger whitelist
-     * - The challenger does not already have an active challenge
-     */
-    function createChallenge(uint256 _lengthOfChallenge, uint8[] calldata _challengeMetrics, uint256[] calldata _targetMeasurementsForEachMetric) external returns(uint256);
     
     /** 
      * @notice Provides the information necessary to start a challenge once requirements are met
-     * @param _initialMeasurement An initial value on top of which the challenger will have to add his challenge information 
+     * @param _challengeId The ID of the challenge to start
      *
      * Requirements:
      * - The caller is on the challenger whitelist
      * - The challenger does not already have an active challenge
      * - There is at least one person betting against the challenger
      */
-    function startChallenge(uint256 _initialMeasurement) external;
+    function startChallenge(uint256 _challengeId) external;
 
     /** 
      * @notice Place a bet for or against a challenge

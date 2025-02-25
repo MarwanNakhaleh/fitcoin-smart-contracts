@@ -1,5 +1,5 @@
 import { ethers, upgrades } from "hardhat";
-import { AddressLike, Signer, parseEther, BigNumberish, EventLog } from "ethers";
+import { AddressLike, Signer, parseEther, BigNumberish } from "ethers";
 import { expect } from "chai";
 import { Challenge, Challenge__factory, Vault } from "../typechain";
 
@@ -64,9 +64,7 @@ describe("Challenge Tests", function () {
     });
 
     it("should return the correct challenge ID when creating the first challenge", async function () {
-      const challengeIds = await challengeContract.getChallengesForChallenger(challengerAddress);
-
-      expect(challengeIds[0]).to.equal(0);
+      expect(challengeId).to.equal(0);
     });
 
     it("should not allow a bettor to place a bet on a challenge if he is not whitelisted", async function () {

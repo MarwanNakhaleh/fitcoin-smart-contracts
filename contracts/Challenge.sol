@@ -179,6 +179,9 @@ contract Challenge is
     /// @dev Error thrown when the contract attempts to distribute winnings for a challenge from which the winnings have already been distributed
     error WinningsAlreadyPaid(uint256 challengeId);
 
+    /// @dev Error thrown when a caller attempts to start someone else's challenge
+    error OnlyChallengerCanStartChallenge();
+
     // ============================ //
     //          Modifiers           //
     // ============================ //
@@ -227,7 +230,7 @@ contract Challenge is
     function initialize(
         uint256 _minimumBetValue,
         address _dataFeedAddress
-    ) external initializer {
+    ) public initializer {
         if (_minimumBetValue == 0) revert MinimumBetAmountTooSmall();
         __ReentrancyGuard_init();
         __Pausable_init();
@@ -298,11 +301,18 @@ contract Challenge is
     }
 
     /**
-     * @inheritdoc IChallenge
+     * @notice Creates a new challenge for a whitelisted challenger, but does not start a challenge until requirements are met
+     * @param _lengthOfChallenge The time length of the challenge in seconds
+     * @param _challengeMetrics The set of metrics the challenger wants to reach in the challenge time frame
+     * @param _targetMeasurementsForEachMetric The set of target measurements for each metric the challenger wants to achieve
+     *
+     * Requirements:
+     * - The caller is on the challenger whitelist
+     * - The challenger does not already have an active challenge
      */
     function createChallenge(uint256 _lengthOfChallenge, uint8[] calldata _challengeMetrics, uint256[] calldata _targetMeasurementsForEachMetric)
-        external
-        override
+        public
+        virtual
         nonReentrant
         onlyChallengers(msg.sender)
         returns(uint256)
@@ -332,17 +342,19 @@ contract Challenge is
         return currentChallengeId;
     }
 
-    /**
+    /** 
      * @inheritdoc IChallenge
      */
     function startChallenge(uint256 _challengeId)
-        external
-        override
+        public
+        virtual
         nonReentrant
         onlyChallengers(msg.sender)
     {
         address challenger = msg.sender;
-
+        if (challengeToChallenger[_challengeId] != challenger) {
+            revert OnlyChallengerCanStartChallenge(); 
+        }
         if (challengeToChallengeStatus[_challengeId] != STATUS_INACTIVE) revert ChallengeIsActive(_challengeId);
         if (challengeToTotalAmountBetAgainst[_challengeId] == 0) revert NobodyBettingAgainstChallenger();
         if (challengeToTotalAmountBetFor[_challengeId] == 0) revert NobodyBettingForChallenger();
@@ -415,6 +427,8 @@ contract Challenge is
      */
     function submitMeasurements(uint256 _challengeId, uint256[] calldata _submittedMeasurements)
         external
+        override
+        virtual
         onlyChallengers(msg.sender)
         nonReentrant 
     {
@@ -543,6 +557,7 @@ contract Challenge is
     function _authorizeUpgrade(address newImplementation)
         internal
         override
+        virtual
         onlyOwner
     {}
 }
