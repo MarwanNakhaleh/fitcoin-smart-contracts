@@ -72,8 +72,8 @@ describe("MultiplayerChallenge Tests", function () {
 
   describe("Global settings", function () {
     it("should allow the owner to set the global maximum number of competitors", async function () {
-      await multiplayerChallenge.connect(owner).setMaxNumChallengeCompetitors(10);
-      expect(await multiplayerChallenge.maxNumChallengeCompetitors()).to.equal(10);
+      await multiplayerChallenge.connect(owner).setMaximumNumberOfChallengeCompetitors(10);
+      expect(await multiplayerChallenge.maximumNumberOfChallengeCompetitors()).to.equal(10);
     });
   });
 
@@ -89,7 +89,7 @@ describe("MultiplayerChallenge Tests", function () {
 
     beforeEach(async function () {
       // Set a global maximum.
-      await multiplayerChallenge.connect(owner).setMaxNumChallengeCompetitors(5);
+      await multiplayerChallenge.connect(owner).setMaximumNumberOfChallengeCompetitors(5);
       // Create a challenge with a maximum of 3 competitors.
       const tx = await multiplayerChallenge.connect(challenger).createMultiplayerChallenge(
         challengeLength,
@@ -141,7 +141,7 @@ describe("MultiplayerChallenge Tests", function () {
 
     beforeEach(async function () {
       // Set a global maximum.
-      await multiplayerChallenge.connect(owner).setMaxNumChallengeCompetitors(5);
+      await multiplayerChallenge.connect(owner).setMaximumNumberOfChallengeCompetitors(5);
       // Create a challenge with a cap of 3 competitors.
       const tx = await multiplayerChallenge.connect(challenger).createMultiplayerChallenge(
         challengeLength,

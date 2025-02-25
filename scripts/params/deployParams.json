@@ -1,7 +1,10 @@
 {
     "general": {
         "minimumUsdBetValue": 10,
-        "maxNumChallengeCompetitors": 10
+        "maximumNumberOfChallengeCompetitors": 10,
+        "maximumNumberOfBettorsPerChallenge": 100,
+        "maximumChallengeLengthInSeconds": 2592000,
+        "maximumNumberOfChallengeMetrics": 3
     },
     "base": {
         "priceFeedAddress": "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70"

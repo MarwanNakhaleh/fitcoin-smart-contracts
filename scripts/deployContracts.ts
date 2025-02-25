@@ -50,9 +50,18 @@ const deployFunc = async () => {
   // Deploy Challenge contract using the upgradeable proxy pattern.
   const ChallengeFactory = await ethers.getContractFactory("Challenge");
   const minimumUsdBetValue = BigInt(deployParams.general.minimumUsdBetValue) * BigInt(1e14);
+  const maximumChallengeLengthInSeconds = deployParams.general.maximumChallengeLengthInSeconds;
+  const maximumNumberOfChallengeMetrics = deployParams.general.maximumNumberOfChallengeMetrics;
+  const maximumNumberOfBettorsPerChallenge = deployParams.general.maximumNumberOfBettorsPerChallenge;
   const challengeContract = await upgrades.deployProxy(
     ChallengeFactory,
-    [minimumUsdBetValue, priceFeedAddress],
+    [
+      minimumUsdBetValue, 
+      priceFeedAddress,
+      maximumNumberOfBettorsPerChallenge,
+      maximumChallengeLengthInSeconds,
+      maximumNumberOfChallengeMetrics
+    ],
     { initializer: "initialize" }
   );
   await challengeContract.waitForDeployment();
@@ -76,11 +85,19 @@ const deployFunc = async () => {
   console.log("Vault address set in Challenge contract");
 
   // Deploy MultiplayerChallenge contract using the upgradeable proxy pattern.
-  const maxNumChallengeCompetitors = deployParams.general.maxNumChallengeCompetitors;
+  const maximumNumberOfChallengeCompetitors = deployParams.general.maximumNumberOfChallengeCompetitors;
+
   const MultiplayerChallengeFactory = await ethers.getContractFactory("MultiplayerChallenge");
   const multiplayerChallengeContract = await upgrades.deployProxy(
     MultiplayerChallengeFactory,
-    [minimumUsdBetValue, maxNumChallengeCompetitors, priceFeedAddress],
+    [
+      minimumUsdBetValue, 
+      maximumNumberOfChallengeCompetitors, 
+      priceFeedAddress,
+      maximumNumberOfBettorsPerChallenge,
+      maximumChallengeLengthInSeconds,
+      maximumNumberOfChallengeMetrics
+    ],
     { initializer: "initializeMultiplayerChallenge" }
   );
   await multiplayerChallengeContract.waitForDeployment();

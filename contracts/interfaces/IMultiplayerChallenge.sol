@@ -9,7 +9,7 @@ import "./IChallenge.sol";
  */
 interface IMultiplayerChallenge is IChallenge {
     /// @dev Emitted when the global maximum number of competitors is updated.
-    event MaxNumChallengeCompetitorsUpdated(uint256 oldValue, uint256 newValue);
+    event MaximumNumberOfChallengeCompetitorsUpdated(uint256 oldValue, uint256 newValue);
     
     /// @dev Emitted when a competitor (other than the creator) joins a challenge.
     event ChallengeCompetitorJoined(uint256 indexed challengeId, address indexed competitor);
@@ -24,7 +24,7 @@ interface IMultiplayerChallenge is IChallenge {
      * @notice Sets the contract-wide maximum number of competitors allowed per challenge.
      * @param _maxNum The new maximum number.
      */
-    function setMaxNumChallengeCompetitors(uint256 _maxNum) external;
+    function setMaximumNumberOfChallengeCompetitors(uint256 _maxNum) external;
     
     /**
      * @notice Creates a new multiplayer challenge.

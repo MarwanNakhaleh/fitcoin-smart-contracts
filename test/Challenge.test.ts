@@ -242,7 +242,6 @@ describe("Challenge Tests", () => {
 
     beforeEach(async () => {
       await challengeContract.connect(owner).addNewChallenger(challengerAddress);
-      challengeId = await challengeContract.connect(challenger).createChallenge(BigInt(60 * 60), [CHALLENGE_STEPS, CHALLENGE_MILEAGE], [10000, 5]);
       
       latestEthPrice = await challengeContract.connect(owner).getLatestPrice();
       betAmount = parseEther("1");

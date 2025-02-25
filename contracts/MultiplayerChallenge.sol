@@ -14,7 +14,7 @@ import "./interfaces/IMultiplayerChallenge.sol";
  */
 contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
     /// @notice Contract-level maximum allowed competitors per challenge.
-    uint256 public maxNumChallengeCompetitors;
+    uint256 public maximumNumberOfChallengeCompetitors;
     
     /// @notice Mapping from challenge ID to the maximum competitors allowed (chosen at creation).
     mapping(uint256 => uint256) public challengeToMaxCompetitors;
@@ -57,10 +57,10 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
      * @notice Sets the global maximum number of competitors allowed per challenge.
      * @param _maxNum The new maximum number.
      */
-    function setMaxNumChallengeCompetitors(uint256 _maxNum) external override onlyOwner {
-        uint256 oldValue = maxNumChallengeCompetitors;
-        maxNumChallengeCompetitors = _maxNum;
-        emit MaxNumChallengeCompetitorsUpdated(oldValue, _maxNum);
+    function setMaximumNumberOfChallengeCompetitors(uint256 _maxNum) external override onlyOwner {
+        uint256 oldValue = maximumNumberOfChallengeCompetitors;
+        maximumNumberOfChallengeCompetitors = _maxNum;
+        emit MaximumNumberOfChallengeCompetitorsUpdated(oldValue, _maxNum);
     }
 
     // ============================ //
@@ -68,7 +68,7 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
     // ============================ //
     function initializeMultiplayerChallenge(
         uint256 _minimumBetValue,
-        uint256 _maxNumChallengeCompetitors,
+        uint256 _maximumNumberOfChallengeCompetitors,
         address _dataFeedAddress,
         uint32 _maximumNumberOfBettorsPerChallenge,
         uint32 _maximumChallengeLengthInSeconds,
@@ -76,7 +76,7 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
     ) external initializer {
         super.initialize(_minimumBetValue, _dataFeedAddress, _maximumNumberOfBettorsPerChallenge, _maximumChallengeLengthInSeconds, _maximumNumberOfChallengeMetrics);
         
-        maxNumChallengeCompetitors = _maxNumChallengeCompetitors;
+        maximumNumberOfChallengeCompetitors = _maximumNumberOfChallengeCompetitors;
     }
     
     /**
@@ -98,7 +98,7 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
         if (_maxCompetitors <= 1) {
             revert NotEnoughCompetitors();
         }
-        if (_maxCompetitors > maxNumChallengeCompetitors) {
+        if (_maxCompetitors > maximumNumberOfChallengeCompetitors) {
             revert ExceedsGlobalMaxCompetitors();
         }
         address challenger = msg.sender;
