@@ -5,18 +5,37 @@ The betting is written to focus on fitness, and the easiest way to try this out 
 
 ## Local testing
 
-```shell
+```bash
 npm install
 npx hardhat typechain
 npx hardhat test
 ```
 
 ## Deploying
+### Local
+Terminal window 1
+```bash
+npx hardhat node
+```
 
-Local
-```shell
+Terminal window 2
+```bash
 npx hardhat run scripts/DeployContracts.ts --network hardhat
 ```
+
+### Public
+
+```bash
+npx hardhat run scripts/DeployContracts.ts --network <network>
+```
+
+Right now, the following networks are supported
+* Base
+* Base Sepolia
+* Arbitrum
+* Arbitrum Sepolia
+* Optimism 
+* Optimism Sepolia
 
 ## Useful links for figuring these things out
 ### Testing against Chainlink price oracles

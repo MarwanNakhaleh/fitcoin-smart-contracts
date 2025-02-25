@@ -9,6 +9,7 @@ import "solidity-docgen";
 dotEnvConfig();
 
 const config: HardhatUserConfig = {
+  defaultNetwork: "hardhat",
   solidity: {
     version: "0.8.22",
     settings: {
@@ -31,9 +32,33 @@ const config: HardhatUserConfig = {
   networks: {
     hardhat: {
       forking: {
-        url: process.env.MAINNET_RPC_URL as string,
+        url: process.env.BASE_SEPOLIA_RPC_URL as string,
         blockNumber: 4776540
-      }
+      },
+    },
+    baseSepolia: {
+      url: process.env.BASE_SEPOLIA_RPC_URL as string,
+      accounts: [process.env.DEPLOYER_PRIVATE_KEY as string],
+    },
+    base: {
+      url: process.env.BASE_RPC_URL as string,
+      accounts: [process.env.DEPLOYER_PRIVATE_KEY as string],
+    },
+    arbitrumSepolia: {
+      url: process.env.ARBITRUM_SEPOLIA_RPC_URL as string,
+      accounts: [process.env.DEPLOYER_PRIVATE_KEY as string],
+    },
+    arbitrum: {
+      url: process.env.ARBITRUM_RPC_URL as string,
+      accounts: [process.env.DEPLOYER_PRIVATE_KEY as string],
+    },
+    optimismSepolia: {
+      url: process.env.OPTIMISM_SEPOLIA_RPC_URL as string,
+      accounts: [process.env.DEPLOYER_PRIVATE_KEY as string],
+    },
+    optimism: {
+      url: process.env.OPTIMISM_RPC_URL as string,
+      accounts: [process.env.DEPLOYER_PRIVATE_KEY as string],
     },
     running: {
       url: "http://localhost:8545",

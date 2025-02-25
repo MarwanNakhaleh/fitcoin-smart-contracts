@@ -49,7 +49,7 @@ const deployFunc = async () => {
 
   // Deploy Challenge contract using the upgradeable proxy pattern.
   const ChallengeFactory = await ethers.getContractFactory("Challenge");
-  const minimumUsdBetValue = BigInt(10) * BigInt(1e14); // Adjust as needed
+  const minimumUsdBetValue = BigInt(deployParams.general.minimumUsdBetValue) * BigInt(1e14);
   const challengeContract = await upgrades.deployProxy(
     ChallengeFactory,
     [minimumUsdBetValue, priceFeedAddress],
@@ -71,13 +71,30 @@ const deployFunc = async () => {
   console.log("Vault contract deployed to:", vaultContractAddress);
 
   // Set the vault address in the Challenge contract.
-  const tx = await challengeContract.setVault(vaultContractAddress);
-  await tx.wait();
+  const challengeSetVaultTx = await challengeContract.setVault(vaultContractAddress);
+  await challengeSetVaultTx.wait();
   console.log("Vault address set in Challenge contract");
 
+  // Deploy MultiplayerChallenge contract using the upgradeable proxy pattern.
+  const maxNumChallengeCompetitors = deployParams.general.maxNumChallengeCompetitors;
+  const MultiplayerChallengeFactory = await ethers.getContractFactory("MultiplayerChallenge");
+  const multiplayerChallengeContract = await upgrades.deployProxy(
+    MultiplayerChallengeFactory,
+    [minimumUsdBetValue, maxNumChallengeCompetitors, priceFeedAddress],
+    { initializer: "initializeMultiplayerChallenge" }
+  );
+  await multiplayerChallengeContract.waitForDeployment();
+  const multiplayerChallengeContractAddress = await multiplayerChallengeContract.getAddress();
+  console.log("MultiplayerChallenge contract deployed to:", multiplayerChallengeContractAddress);
+
+  const multiplayerChallengeSetVaultTx = await multiplayerChallengeContract.setVault(vaultContractAddress);
+  await multiplayerChallengeSetVaultTx.wait();
+  console.log("Vault address set in MultiplayerChallenge contract");
+  
   return {
     challengeContractAddress,
     vaultContractAddress,
+    multiplayerChallengeContractAddress,
   };
 };
 
