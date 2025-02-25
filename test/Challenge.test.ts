@@ -240,9 +240,16 @@ describe("Challenge Tests", () => {
     let latestEthPrice: bigint;
     let betAmount: bigint;
 
+    const challengeLength = BigInt(60 * 60) // 1 hour challenge time
+    const challengeMetrics: BigNumberish[] = [CHALLENGE_STEPS, CHALLENGE_MILEAGE];
+    const targetNumberOfSteps: BigNumberish = 10000;
+    const targetNumberOfMiles: BigNumberish = 5
+    const targetMeasurements = [targetNumberOfSteps, targetNumberOfMiles]
+
     beforeEach(async () => {
       await challengeContract.connect(owner).addNewChallenger(challengerAddress);
-      
+      await challengeContract.connect(challenger).createChallenge(challengeLength, challengeMetrics, targetMeasurements); 
+
       latestEthPrice = await challengeContract.connect(owner).getLatestPrice();
       betAmount = parseEther("1");
 
