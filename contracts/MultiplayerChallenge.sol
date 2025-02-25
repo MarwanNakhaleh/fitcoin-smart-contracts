@@ -41,6 +41,18 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
     /// @dev Error thrown when a caller attempts to start a challenge with less than 2 competitors.
     error NotEnoughCompetitors();
     
+    /// @dev Error thrown when a caller attempts to start a challenge with more competitors than the global maximum.
+    error ExceedsGlobalMaxCompetitors();
+
+    /// @dev Error thrown when a caller attempts to join a challenge that is not active.
+    error ChallengeCompetitorNotJoined(uint256 challengeId, address competitor);
+
+    /// @dev Error thrown when a caller attempts to join a challenge that is full.
+    error ChallengeIsFull(uint256 challengeId);
+
+    /// @dev Error thrown when a caller attempts to join a challenge they have already joined.
+    error ChallengeCompetitorAlreadyJoined(uint256 challengeId);
+
     /**
      * @notice Sets the global maximum number of competitors allowed per challenge.
      * @param _maxNum The new maximum number.
@@ -57,12 +69,13 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
     function initializeMultiplayerChallenge(
         uint256 _minimumBetValue,
         uint256 _maxNumChallengeCompetitors,
-        address _dataFeedAddress
+        address _dataFeedAddress,
+        uint32 _maximumNumberOfBettorsPerChallenge,
+        uint32 _maximumChallengeLengthInSeconds,
+        uint8 _maximumNumberOfChallengeMetrics
     ) external initializer {
-        // Call the parent's initialize function
-        super.initialize(_minimumBetValue, _dataFeedAddress);
+        super.initialize(_minimumBetValue, _dataFeedAddress, _maximumNumberOfBettorsPerChallenge, _maximumChallengeLengthInSeconds, _maximumNumberOfChallengeMetrics);
         
-        // Set multiplayer-specific state
         maxNumChallengeCompetitors = _maxNumChallengeCompetitors;
     }
     
@@ -82,8 +95,12 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
         uint256[] calldata _targetMeasurementsForEachMetric,
         uint256 _maxCompetitors
     ) external override onlyChallengers(msg.sender) returns(uint256) {
-        require(_maxCompetitors > 0, "Max competitors must be > 0");
-        require(_maxCompetitors <= maxNumChallengeCompetitors, "Exceeds global max competitors");
+        if (_maxCompetitors <= 1) {
+            revert NotEnoughCompetitors();
+        }
+        if (_maxCompetitors > maxNumChallengeCompetitors) {
+            revert ExceedsGlobalMaxCompetitors();
+        }
         address challenger = msg.sender;
         // Call parent createChallenge (which emits events and initializes common challenge data)
         uint256 challengeId = super.createChallenge(_lengthOfChallenge, _challengeMetrics, _targetMeasurementsForEachMetric);
@@ -108,17 +125,23 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
      */
     function joinChallenge(uint256 _challengeId) external override {
         // Ensure the challenge is still inactive (i.e. has not started yet).
-        require(challengeToChallengeStatus[_challengeId] == STATUS_INACTIVE, "Challenge already started");
+        if (challengeToChallengeStatus[_challengeId] != STATUS_INACTIVE) {
+            revert ChallengeIsActive(_challengeId);
+        }
         // Ensure there is room for more competitors.
-        require(challengeCompetitors[_challengeId].length < challengeToMaxCompetitors[_challengeId], "Challenge is full");
-        address competitor = msg.sender;
+        if (challengeCompetitors[_challengeId].length >= challengeToMaxCompetitors[_challengeId]) {
+            revert ChallengeIsFull(_challengeId);
+        }
+        address caller = msg.sender;
         // Ensure the caller has not already joined.
-        require(!challengeHasCompetitor[_challengeId][competitor], "Already joined");
+        if (challengeHasCompetitor[_challengeId][caller]) {
+            revert ChallengeCompetitorAlreadyJoined(_challengeId);
+        }
         
-        challengeCompetitors[_challengeId].push(competitor);
-        challengeHasCompetitor[_challengeId][competitor] = true;
+        challengeCompetitors[_challengeId].push(caller);
+        challengeHasCompetitor[_challengeId][caller] = true;
         
-        emit ChallengeCompetitorJoined(_challengeId, competitor);
+        emit ChallengeCompetitorJoined(_challengeId, caller);
     }
 
     /**
@@ -130,11 +153,11 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
             revert ChallengeIsActive(_challengeId);
         }
         
-        address competitor = msg.sender;
+        address caller = msg.sender;
         
         uint256 length = challengeCompetitors[_challengeId].length;
         for (uint256 i = 0; i < length; i++) {
-            if (challengeCompetitors[_challengeId][i] == competitor) {
+            if (challengeCompetitors[_challengeId][i] == caller) {
                 // Move the last element to the position being deleted
                 challengeCompetitors[_challengeId][i] = challengeCompetitors[_challengeId][length - 1];
                 // Remove the last element
@@ -142,9 +165,9 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
                 break;
             }
         }
-        challengeHasCompetitor[_challengeId][competitor] = false;
+        challengeHasCompetitor[_challengeId][caller] = false;
         
-        emit ChallengeCompetitorLeft(_challengeId, competitor);
+        emit ChallengeCompetitorLeft(_challengeId, caller);
     }
     
     /**
@@ -157,7 +180,10 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
     function submitMeasurements(uint256 _challengeId, uint256[] calldata _submittedMeasurements) 
         external override(Challenge, IMultiplayerChallenge) nonReentrant {
         // Ensure the sender is a competitor in this challenge.
-        require(challengeHasCompetitor[_challengeId][msg.sender], "Not a competitor in this challenge");
+        address caller = msg.sender;
+        if (!challengeHasCompetitor[_challengeId][caller]) {
+            revert ChallengeCompetitorNotJoined(_challengeId, caller);
+        }
         
         // Verify that the challenge is active.
         if (challengeToChallengeStatus[_challengeId] != STATUS_ACTIVE) {
@@ -177,13 +203,13 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
         }
         
         // Update the competitor's score.
-        challengeCompetitorScores[_challengeId][msg.sender] = newScore;
+        challengeCompetitorScores[_challengeId][caller] = newScore;
         
         // If the new score beats the current leader's score, update the leader.
         if (newScore > challengeLeaderScore[_challengeId]) {
-            challengeLeader[_challengeId] = msg.sender;
+            challengeLeader[_challengeId] = caller;
             challengeLeaderScore[_challengeId] = newScore;
-            emit LeaderUpdated(_challengeId, msg.sender, newScore);
+            emit LeaderUpdated(_challengeId, caller, newScore);
         }
     }
     

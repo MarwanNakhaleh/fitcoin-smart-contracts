@@ -1,5 +1,5 @@
 import { ethers, upgrades } from "hardhat";
-import { Signer, parseEther, BigNumberish } from "ethers";
+import { Signer, BigNumberish } from "ethers";
 import { expect } from "chai";
 import { MultiplayerChallenge, MultiplayerChallenge__factory, Vault } from "../typechain";
 
@@ -18,7 +18,7 @@ describe("MultiplayerChallenge Tests", function () {
   const INITIAL_ANSWER = BigInt(200000000000); // $2000.00000000 with 8 decimals
   const ethPriceFactorConversionUnits: bigint = BigInt(1e14); // number of wei in one ETH
   const minimumUsdBetValue: bigint = BigInt(10) * ethPriceFactorConversionUnits;
-  
+  const maximumNumberOfChallengeCompetitors = 3;
   
   const CHALLENGE_STEPS: BigNumberish = 0;
   const CHALLENGE_MILEAGE: BigNumberish = 1;
@@ -35,10 +35,21 @@ describe("MultiplayerChallenge Tests", function () {
     // Deploy the MultiplayerChallenge proxy.
     const MultiplayerChallengeFactory: MultiplayerChallenge__factory = await ethers.getContractFactory("MultiplayerChallenge");
     const mockPriceFeedAddress = await mockPriceFeed.getAddress();
+    const maximumNumberOfBettorsPerChallenge = 100;
+    const maximumNumberOfChallengeCompetitors = 3;
+    const maximumChallengeLengthInSeconds = 2592000;
+    const maximumNumberOfChallengeMetrics = 3;
 
     multiplayerChallenge = await upgrades.deployProxy(
       MultiplayerChallengeFactory,
-      [minimumUsdBetValue, 3, mockPriceFeedAddress],
+      [
+        minimumUsdBetValue, 
+        maximumNumberOfChallengeCompetitors,
+        mockPriceFeedAddress, 
+        maximumNumberOfBettorsPerChallenge,
+        maximumChallengeLengthInSeconds,
+        maximumNumberOfChallengeMetrics
+      ],
       { initializer: 'initializeMultiplayerChallenge' }
     );
     await multiplayerChallenge.waitForDeployment();
@@ -55,6 +66,8 @@ describe("MultiplayerChallenge Tests", function () {
 
     // Add the challenger to the whitelist.
     await multiplayerChallenge.connect(owner).addNewChallenger(challengerAddress);
+    await multiplayerChallenge.connect(owner).addNewChallenger(await competitor1.getAddress());
+    await multiplayerChallenge.connect(owner).addNewChallenger(await competitor2.getAddress());
   });
 
   describe("Global settings", function () {
@@ -65,6 +78,7 @@ describe("MultiplayerChallenge Tests", function () {
   });
 
   describe("Creating a multiplayer challenge", function () {
+    const maximumNumberOfChallengeCompetitors = 3;
     const challengeMetrics: BigNumberish[] = [CHALLENGE_STEPS, CHALLENGE_MILEAGE];
     const targetNumberOfSteps: BigNumberish = 10000;
     const targetNumberOfMiles: BigNumberish = 5;
@@ -81,11 +95,11 @@ describe("MultiplayerChallenge Tests", function () {
         challengeLength,
         challengeMetrics,
         targetMeasurements,
-        3
+        maximumNumberOfChallengeCompetitors
       );
       await tx.wait();
       const challengeIds = await multiplayerChallenge.getChallengesForChallenger(challengerAddress);
-      challengeId = challengeIds[0];
+      challengeId = challengeIds[challengeIds.length - 1];
     });
 
     it("should create a challenge with the correct competitor cap and add the creator as the initial competitor", async function () {
@@ -96,24 +110,24 @@ describe("MultiplayerChallenge Tests", function () {
     });
 
     it("should allow new competitors to join until the cap is reached", async function () {
-      // competitor1 joins.
+      // competitor1 joins
       await multiplayerChallenge.connect(competitor1).joinChallenge(challengeId);
       let competitors = await multiplayerChallenge.getCompetitors(challengeId);
       expect(competitors.length).to.equal(2);
 
-      // competitor2 joins.
+      // competitor2 joins
       await multiplayerChallenge.connect(competitor2).joinChallenge(challengeId);
       competitors = await multiplayerChallenge.getCompetitors(challengeId);
       expect(competitors.length).to.equal(3);
 
       // A fourth competitor cannot join as the cap is reached.
       await expect(multiplayerChallenge.connect(nonCompetitor).joinChallenge(challengeId))
-        .to.be.revertedWith("Challenge is full");
+        .to.be.revertedWithCustomError(multiplayerChallenge, "ChallengeIsFull");
     });
 
     it("should revert when a non-participant tries to submit measurements", async function () {
       await expect(multiplayerChallenge.connect(nonCompetitor).submitMeasurements(challengeId, [10000, 5]))
-        .to.be.revertedWith("Not a competitor in this challenge");
+        .to.be.revertedWithCustomError(multiplayerChallenge, "ChallengeCompetitorNotJoined");
     });
   });
 
@@ -133,7 +147,7 @@ describe("MultiplayerChallenge Tests", function () {
         challengeLength,
         challengeMetrics,
         targetMeasurements,
-        3
+        maximumNumberOfChallengeCompetitors
       );
       await tx.wait();
       const challengeIds = await multiplayerChallenge.getChallengesForChallenger(challengerAddress);

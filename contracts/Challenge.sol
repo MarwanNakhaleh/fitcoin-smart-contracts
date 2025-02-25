@@ -27,7 +27,7 @@ contract Challenge is
      */
     uint8 constant CHALLENGE_STEPS = 0;
     uint8 constant CHALLENGE_MILEAGE = 1;
-    uint8 constant CHALLENGE_CYCLING = 2;
+    uint8 constant CHALLENGE_CYCLING_MILEAGE = 2;
     uint8 constant CHALLENGE_CALORIES_BURNED = 3;
 
     /** 
@@ -56,11 +56,17 @@ contract Challenge is
     /// @notice ETH/USD exchange rate on Base Mainnet
     // address internal dataFeedAddress = 0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70;
 
-    /// @notice the minimum value in USD of a bet on a challenge, either from the challenger or someone betting against him
-    /// TODO: match the USD number coming in to the actual amount of ETH needed at the time of calculation
+    /// @notice the minimum value in USD of a bet on a challenge, either from the challenger or someone betting against them
     uint256 internal minimumUsdValueOfBet;
 
-    uint32 constant internal maximumNumberOfBettorsPerChallenge = 100;
+    /// @notice the maximum number of bettors per challenge, default set to 100
+    uint32 internal maximumNumberOfBettorsPerChallenge;
+
+    /// @notice the maximum length of a challenge in seconds, default set to 30 days
+    uint32 internal maximumChallengeLengthInSeconds;
+
+    /// @notice the maximum number of metrics per challenge, default set to 3
+    uint8 internal maximumNumberOfChallengeMetrics;
 
     /// @notice Whitelisted challengers who can participate in challenges
     mapping(address => bool) public challengerWhitelist;
@@ -182,6 +188,12 @@ contract Challenge is
     /// @dev Error thrown when a caller attempts to start someone else's challenge
     error OnlyChallengerCanStartChallenge();
 
+    /// @dev Error thrown when a caller attempts to start a challenge with a length greater than the maximum allowed
+    error ChallengeLengthTooLong();
+
+    /// @dev Error thrown when a caller attempts to start a challenge with a greater number of metrics than the maximum allowed
+    error TooManyChallengeMetrics();
+
     // ============================ //
     //          Modifiers           //
     // ============================ //
@@ -202,18 +214,27 @@ contract Challenge is
     }
 
     // ============================ //
+    //         Setters          //
+    // ============================ //
+    
+    /// @notice Sets the vault contract
+    function setVault(address _vault) external onlyOwner {
+        if (_vault == address(0)) revert VaultNotSet();
+        vault = IVault(_vault);
+    }
+
+    /// @notice Sets the maximum number of bettors per challenge
+    function setMaximumNumberOfBettorsPerChallenge(uint32 _maximumNumberOfBettorsPerChallenge) external onlyOwner {
+        maximumNumberOfBettorsPerChallenge = _maximumNumberOfBettorsPerChallenge;
+    }
+
+    // ============================ //
     //         Initializer          //
     // ============================ //
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
-    }
-
-    /// @notice Sets the vault contract
-    function setVault(address _vault) external onlyOwner {
-        if (_vault == address(0)) revert VaultNotSet();
-        vault = IVault(_vault);
     }
 
     /**
@@ -229,7 +250,10 @@ contract Challenge is
      */
     function initialize(
         uint256 _minimumBetValue,
-        address _dataFeedAddress
+        address _dataFeedAddress,
+        uint32 _maximumNumberOfBettorsPerChallenge,
+        uint32 _maximumChallengeLengthInSeconds,
+        uint8 _maximumNumberOfChallengeMetrics
     ) public initializer {
         if (_minimumBetValue == 0) revert MinimumBetAmountTooSmall();
         __ReentrancyGuard_init();
@@ -239,6 +263,9 @@ contract Challenge is
         __UUPSUpgradeable_init();
 
         minimumUsdValueOfBet = _minimumBetValue;
+        maximumNumberOfBettorsPerChallenge = _maximumNumberOfBettorsPerChallenge;
+        maximumChallengeLengthInSeconds = _maximumChallengeLengthInSeconds;
+        maximumNumberOfChallengeMetrics = _maximumNumberOfChallengeMetrics;
         dataFeed = AggregatorV3Interface(_dataFeedAddress);
         latestChallengeId = 0;
 
@@ -317,10 +344,11 @@ contract Challenge is
         onlyChallengers(msg.sender)
         returns(uint256)
     {
-        address challenger = msg.sender;
-
+        if (_lengthOfChallenge > maximumChallengeLengthInSeconds) revert ChallengeLengthTooLong();
         if (_challengeMetrics.length != _targetMeasurementsForEachMetric.length) revert MalformedChallengeMetricsProvided();
+        if (_challengeMetrics.length > maximumNumberOfChallengeMetrics) revert TooManyChallengeMetrics();
 
+        address challenger = msg.sender;
         uint256 currentChallengeId = latestChallengeId;
         unchecked {
             latestChallengeId++;
@@ -339,6 +367,8 @@ contract Challenge is
         challengeToChallengeLength[currentChallengeId] = _lengthOfChallenge;
         challengeToChallengeStatus[currentChallengeId] = STATUS_INACTIVE;
         
+        emit ChallengeCreated(challenger, currentChallengeId, _lengthOfChallenge, _challengeMetrics, _targetMeasurementsForEachMetric);
+
         return currentChallengeId;
     }
 
@@ -454,6 +484,8 @@ contract Challenge is
     }
 
     function distributeWinnings(uint256 _challengeId) external onlyOwner {
+        if (address(vault) == address(0)) revert VaultNotSet();
+
         uint256 timestamp = block.timestamp;
         if (timestamp < (challengeToStartTime[_challengeId] + challengeToChallengeLength[_challengeId])) {
             revert ChallengeIsActive(_challengeId);

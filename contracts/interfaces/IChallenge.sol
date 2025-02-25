@@ -29,8 +29,11 @@ interface IChallenge {
      * @dev Emitted when a challenger creates a challenge.
      * @param challenger The address of challenger who created the challenge.
      * @param challengeId The ID of the challenge
+     * @param lengthOfChallenge The length of the challenge in seconds
+     * @param challengeMetrics The metrics of the challenge
+     * @param targetMeasurementsForEachMetric The target measurements for each metric
      */
-    event ChallengeCreated(address indexed challenger, uint256 indexed challengeId);
+    event ChallengeCreated(address indexed challenger, uint256 indexed challengeId, uint256 lengthOfChallenge, uint8[] challengeMetrics, uint256[] targetMeasurementsForEachMetric);
 
     /**
      * @dev Emitted when a challenger starts a challenge.
