@@ -155,7 +155,7 @@ describe("Challenge Tests", () => {
 
       await expect(
         challengeContract.connect(bettor2).placeBet(challengeId, true, { value: betAmount })
-      ).to.be.revertedWithCustomError(challengeContract, "ChallengeIsActive");
+      ).to.be.revertedWithCustomError(challengeContract, "ChallengeCannotBeModified");
     });
 
     it("does not allow a bet under the minimum USD value of ETH needed", async () => {

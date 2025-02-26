@@ -6,12 +6,12 @@ import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
-import { AggregatorV3Interface } from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 
 import "./interfaces/IChallenge.sol";
 import "./interfaces/IVault.sol";
 
-contract Challenge is 
+contract Challenge is
     IChallenge,
     UUPSUpgradeable,
     ReentrancyGuardUpgradeable,
@@ -22,7 +22,7 @@ contract Challenge is
     //             Enums            //
     // ============================ //
 
-    /** 
+    /**
      * @dev Enumerated values representing the type of health challenges available, subject to change as capability expands.
      */
     uint8 constant CHALLENGE_STEPS = 0;
@@ -30,7 +30,7 @@ contract Challenge is
     uint8 constant CHALLENGE_CYCLING_MILEAGE = 2;
     uint8 constant CHALLENGE_CALORIES_BURNED = 3;
 
-    /** 
+    /**
      * @dev Enumerated values representing the status of a challenge, subject to change as capability expands.
      */
     uint8 constant STATUS_INACTIVE = 0;
@@ -38,7 +38,6 @@ contract Challenge is
     uint8 constant STATUS_EXPIRED = 2;
     uint8 constant STATUS_CHALLENGER_WON = 3;
     uint8 constant STATUS_CHALLENGER_LOST = 4;
-
 
     // ============================ //
     //      State Variables         //
@@ -52,7 +51,7 @@ contract Challenge is
 
     /// @notice the minimum number of total bettors on a challenge
     uint256 constant MINIMUM_NUMBER_OF_BETTORS_AGAINST = 1;
-    
+
     /// @notice ETH/USD exchange rate on Base Mainnet
     // address internal dataFeedAddress = 0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70;
 
@@ -77,20 +76,20 @@ contract Challenge is
     // ==================================== //
     // Challenger metadata data structures  //
     // ==================================== //
-    
+
     /// @notice Mapping to get all of a challenger's challenges
     mapping(address => uint256[]) internal challengerToChallenges;
 
     /// @notice Mapping to get the challenge ID of a challenger's currently active challenge
     /// @dev When a challenge finishes, we will change the value in the mapping back to 0
     mapping(address => uint256) public challengerToActiveChallenge;
-    
+
     // ==================================== //
     //  Challenge metadata data structures  //
     // ==================================== //
 
     uint256 public latestChallengeId;
-    
+
     /// @notice Mapping to get a challenge's owner by challenge ID
     mapping(uint256 => address) public challengeToChallenger;
 
@@ -108,10 +107,10 @@ contract Challenge is
 
     /// @notice Mapping to get the challenge start time from by challenge ID
     mapping(uint256 => uint256) public challengeToStartTime;
-    
+
     /// @notice Mapping to get the challenge length from by challenge ID
     mapping(uint256 => uint256) public challengeToChallengeLength;
-    
+
     /// @notice Mapping to get a challenge's status by ID
     mapping(uint256 => uint8) public challengeToChallengeStatus;
 
@@ -124,7 +123,8 @@ contract Challenge is
     mapping(uint256 => uint256) public challengeToNumberOfBettorsAgainst;
 
     mapping(uint256 => mapping(address => uint256)) public challengeToBetsFor;
-    mapping(uint256 => mapping(address => uint256)) public challengeToBetsAgainst;
+    mapping(uint256 => mapping(address => uint256))
+        public challengeToBetsAgainst;
     mapping(uint256 => address[]) public challengeToBettors;
 
     // ============================ //
@@ -153,7 +153,11 @@ contract Challenge is
     error ChallengeCannotBeModified();
 
     /// @dev Error thrown when a challenge is no longer allowed to be modified
-    error ChallengeCanOnlyBeModifiedByChallenger(uint256 challengeId, address caller, address challenger);
+    error ChallengeCanOnlyBeModifiedByChallenger(
+        uint256 challengeId,
+        address caller,
+        address challenger
+    );
 
     /// @dev Error thrown when a challenge is already active when it must be inactive for the action requested
     error ChallengeIsActive(uint256 activeChallengeId);
@@ -208,15 +212,31 @@ contract Challenge is
         _;
     }
 
-    modifier betIsGreaterThanOrEqualToMinimumBetValue()  {
-        require(msg.value >= minimumUsdValueOfBet, "Amount is less than minimum bet!");
+    modifier betIsGreaterThanOrEqualToMinimumBetValue() {
+        if (msg.value < minimumUsdValueOfBet) revert MinimumBetAmountTooSmall();
+        _;
+    }
+
+    modifier checkBettingEligibility(uint256 _challengeId, address caller) {
+        if (!bettorWhitelist[caller]) {
+            revert BettorNotInWhitelist();
+        }
+        if (address(vault) == address(0)) {
+            revert VaultNotSet();
+        }
+        if (msg.value < minimumUsdValueOfBet) {
+            revert MinimumBetAmountTooSmall();
+        }
+        if (challengeToChallengeStatus[_challengeId] != STATUS_INACTIVE) {
+            revert ChallengeCannotBeModified();
+        }
         _;
     }
 
     // ============================ //
-    //         Setters          //
+    //         Setters              //
     // ============================ //
-    
+
     /// @notice Sets the vault contract
     function setVault(address _vault) external onlyOwner {
         if (_vault == address(0)) revert VaultNotSet();
@@ -224,7 +244,9 @@ contract Challenge is
     }
 
     /// @notice Sets the maximum number of bettors per challenge
-    function setMaximumNumberOfBettorsPerChallenge(uint32 _maximumNumberOfBettorsPerChallenge) external onlyOwner {
+    function setMaximumNumberOfBettorsPerChallenge(
+        uint32 _maximumNumberOfBettorsPerChallenge
+    ) external onlyOwner {
         maximumNumberOfBettorsPerChallenge = _maximumNumberOfBettorsPerChallenge;
     }
 
@@ -238,7 +260,7 @@ contract Challenge is
     }
 
     /**
-     * @notice Initializes the Challenge contract to 
+     * @notice Initializes the Challenge contract to
      * @dev This function replaces the constructor for upgradeable contracts. It can only be called once.
      *
      * @param _minimumBetValue the minimum USD value for a bet for or against a challenger
@@ -279,19 +301,24 @@ contract Challenge is
     /**
      * @inheritdoc IChallenge
      */
-    function getChallengesForChallenger(address challenger) external view returns (uint256[] memory) {
+    function getChallengesForChallenger(
+        address challenger
+    ) external view returns (uint256[] memory) {
         return challengerToChallenges[challenger];
     }
 
     /**
      * @inheritdoc IChallenge
      */
-    function addNewChallenger(address challenger) external onlyOwner {
-        if (challengerWhitelist[challenger]) revert ChallengerAlreadyInWhitelist();
+    function addNewChallenger(
+        address challenger
+    ) external virtual override onlyOwner {
+        if (challengerWhitelist[challenger])
+            revert ChallengerAlreadyInWhitelist();
 
         challengerWhitelist[challenger] = true;
         bettorWhitelist[challenger] = true;
-        
+
         emit ChallengerJoined(challenger);
         emit BettorJoined(challenger); // a user allowed to create challenges is also by default allowed to bet
     }
@@ -299,18 +326,20 @@ contract Challenge is
     /**
      * @inheritdoc IChallenge
      */
-    function addNewBettor(address bettor) external onlyOwner {
+    function addNewBettor(address bettor) external virtual override onlyOwner {
         if (bettorWhitelist[bettor]) revert BettorAlreadyInWhitelist();
-        
+
         bettorWhitelist[bettor] = true;
-        
+
         emit BettorJoined(bettor);
     }
 
     /**
      * @inheritdoc IChallenge
      */
-    function removeChallenger(address challenger) external onlyOwner {
+    function removeChallenger(
+        address challenger
+    ) external virtual override onlyOwner {
         if (!challengerWhitelist[challenger]) revert ChallengerNotInWhitelist();
 
         challengerWhitelist[challenger] = false;
@@ -321,7 +350,9 @@ contract Challenge is
     /**
      * @inheritdoc IChallenge
      */
-    function changeMinimumBetValue(uint256 _newMinimumValue) external onlyOwner {
+    function changeMinimumBetValue(
+        uint256 _newMinimumValue
+    ) external virtual override onlyOwner {
         if (_newMinimumValue == 0) revert MinimumBetAmountTooSmall();
 
         minimumUsdValueOfBet = _newMinimumValue;
@@ -337,16 +368,25 @@ contract Challenge is
      * - The caller is on the challenger whitelist
      * - The challenger does not already have an active challenge
      */
-    function createChallenge(uint256 _lengthOfChallenge, uint8[] calldata _challengeMetrics, uint256[] calldata _targetMeasurementsForEachMetric)
+    function createChallenge(
+        uint256 _lengthOfChallenge,
+        uint8[] memory _challengeMetrics,
+        uint256[] memory _targetMeasurementsForEachMetric
+    )
         public
         virtual
         nonReentrant
         onlyChallengers(msg.sender)
-        returns(uint256)
+        returns (uint256)
     {
-        if (_lengthOfChallenge > maximumChallengeLengthInSeconds) revert ChallengeLengthTooLong();
-        if (_challengeMetrics.length != _targetMeasurementsForEachMetric.length) revert MalformedChallengeMetricsProvided();
-        if (_challengeMetrics.length > maximumNumberOfChallengeMetrics) revert TooManyChallengeMetrics();
+        if (_lengthOfChallenge > maximumChallengeLengthInSeconds)
+            revert ChallengeLengthTooLong();
+        if (_challengeMetrics.length == 0)
+            revert("At least one metric is required");
+        if (_challengeMetrics.length != _targetMeasurementsForEachMetric.length)
+            revert MalformedChallengeMetricsProvided();
+        if (_challengeMetrics.length > maximumNumberOfChallengeMetrics)
+            revert TooManyChallengeMetrics();
 
         address challenger = msg.sender;
         uint256 currentChallengeId = latestChallengeId;
@@ -356,38 +396,48 @@ contract Challenge is
 
         challengeToChallenger[currentChallengeId] = challenger;
         challengerToChallenges[challenger].push(currentChallengeId);
-        
+
         for (uint256 i = 0; i < _challengeMetrics.length; ) {
-            challengeToTargetMetricMeasurements[currentChallengeId][_challengeMetrics[i]] = _targetMeasurementsForEachMetric[i];
-            challengeToIncludedMetrics[currentChallengeId].push(_challengeMetrics[i]);
+            challengeToTargetMetricMeasurements[currentChallengeId][
+                _challengeMetrics[i]
+            ] = _targetMeasurementsForEachMetric[i];
+            challengeToIncludedMetrics[currentChallengeId].push(
+                _challengeMetrics[i]
+            );
             unchecked {
                 i++;
             }
         }
         challengeToChallengeLength[currentChallengeId] = _lengthOfChallenge;
         challengeToChallengeStatus[currentChallengeId] = STATUS_INACTIVE;
-        
-        emit ChallengeCreated(challenger, currentChallengeId, _lengthOfChallenge, _challengeMetrics, _targetMeasurementsForEachMetric);
+
+        emit ChallengeCreated(
+            challenger,
+            currentChallengeId,
+            _lengthOfChallenge,
+            _challengeMetrics,
+            _targetMeasurementsForEachMetric
+        );
 
         return currentChallengeId;
     }
 
-    /** 
+    /**
      * @inheritdoc IChallenge
      */
-    function startChallenge(uint256 _challengeId)
-        public
-        virtual
-        nonReentrant
-        onlyChallengers(msg.sender)
-    {
+    function startChallenge(
+        uint256 _challengeId
+    ) public virtual nonReentrant onlyChallengers(msg.sender) {
         address challenger = msg.sender;
         if (challengeToChallenger[_challengeId] != challenger) {
-            revert OnlyChallengerCanStartChallenge(); 
+            revert OnlyChallengerCanStartChallenge();
         }
-        if (challengeToChallengeStatus[_challengeId] != STATUS_INACTIVE) revert ChallengeIsActive(_challengeId);
-        if (challengeToTotalAmountBetAgainst[_challengeId] == 0) revert NobodyBettingAgainstChallenger();
-        if (challengeToTotalAmountBetFor[_challengeId] == 0) revert NobodyBettingForChallenger();
+        if (challengeToChallengeStatus[_challengeId] != STATUS_INACTIVE)
+            revert ChallengeIsActive(_challengeId);
+        if (challengeToTotalAmountBetAgainst[_challengeId] == 0)
+            revert NobodyBettingAgainstChallenger();
+        if (challengeToTotalAmountBetFor[_challengeId] == 0)
+            revert NobodyBettingForChallenger();
 
         challengeToChallengeStatus[_challengeId] = STATUS_ACTIVE;
         challengeToStartTime[_challengeId] = block.timestamp;
@@ -398,29 +448,35 @@ contract Challenge is
     /**
      * @inheritdoc IChallenge
      */
-    function placeBet(uint256 _challengeId, bool _bettingFor) 
-        external 
-        payable 
-        nonReentrant
-        onlyBettors(msg.sender)
-    {
-        if (challengeToChallengeStatus[_challengeId] == STATUS_ACTIVE) revert ChallengeIsActive(_challengeId);
+    function placeBet(
+        uint256 _challengeId,
+        bool _bettingFor
+    ) external payable virtual override nonReentrant checkBettingEligibility(_challengeId, msg.sender) {
+        if (challengeToChallengeStatus[_challengeId] == STATUS_ACTIVE)
+            revert ChallengeIsActive(_challengeId);
         if (msg.value < minimumUsdValueOfBet) revert MinimumBetAmountTooSmall();
         if (address(vault) == address(0)) revert VaultNotSet();
 
         unchecked {
-            uint256 totalBettorsOnChallenge = challengeToNumberOfBettorsFor[_challengeId] + challengeToNumberOfBettorsAgainst[_challengeId];
-            if (totalBettorsOnChallenge >= maximumNumberOfBettorsPerChallenge) revert TooManyBettors();
+            uint256 totalBettorsOnChallenge = challengeToNumberOfBettorsFor[
+                _challengeId
+            ] + challengeToNumberOfBettorsAgainst[_challengeId];
+            if (totalBettorsOnChallenge >= maximumNumberOfBettorsPerChallenge)
+                revert TooManyBettors();
         }
-        
+
         address caller = msg.sender;
-        if (challengeToChallenger[_challengeId] == caller && !_bettingFor) revert ChallengerCannotBetAgainstHimself();
-        if (challengeToBetsFor[_challengeId][caller] != 0 || challengeToBetsAgainst[_challengeId][caller] != 0) revert BettorCannotUpdateBet();
-        
+        if (challengeToChallenger[_challengeId] == caller && !_bettingFor)
+            revert ChallengerCannotBetAgainstHimself();
+        if (
+            challengeToBetsFor[_challengeId][caller] != 0 ||
+            challengeToBetsAgainst[_challengeId][caller] != 0
+        ) revert BettorCannotUpdateBet();
+
         uint256 value = msg.value;
         vault.depositETH{value: msg.value}();
 
-        if(_bettingFor) {
+        if (_bettingFor) {
             unchecked {
                 challengeToNumberOfBettorsFor[_challengeId] += 1;
                 challengeToTotalAmountBetFor[_challengeId] += uint256(value);
@@ -429,54 +485,94 @@ contract Challenge is
         } else {
             unchecked {
                 challengeToNumberOfBettorsAgainst[_challengeId] += 1;
-                challengeToTotalAmountBetAgainst[_challengeId] += uint256(value);
+                challengeToTotalAmountBetAgainst[_challengeId] += uint256(
+                    value
+                );
             }
             challengeToBetsAgainst[_challengeId][caller] = uint256(value);
         }
 
         challengeToBettors[_challengeId].push(caller);
-        
+
         emit BetPlaced(_challengeId, caller, _bettingFor, value);
     }
 
     /**
      * @inheritdoc IChallenge
      */
-    function changeBet(uint256 _challengeId, bool _bettingFor) 
-        external 
-        payable 
-        nonReentrant
-        onlyBettors(msg.sender)
-    {
+    function cancelBet(
+        uint256 _challengeId
+    ) public payable virtual override nonReentrant checkBettingEligibility(_challengeId, msg.sender) {
         address caller = msg.sender;
-        if (challengeToBetsFor[_challengeId][caller] == 0 && challengeToBetsAgainst[_challengeId][caller] == 0) revert BettorCannotUpdateBet();
+        if (
+            challengeToBetsFor[_challengeId][caller] == 0 &&
+            challengeToBetsAgainst[_challengeId][caller] == 0
+        ) revert BettorCannotUpdateBet();
+
+        if (challengeToChallengeStatus[_challengeId] != STATUS_INACTIVE) {
+            revert ChallengeCannotBeModified();
+        }
     }
 
     /**
      * @inheritdoc IChallenge
      */
-    function submitMeasurements(uint256 _challengeId, uint256[] calldata _submittedMeasurements)
-        external
-        override
-        virtual
-        onlyChallengers(msg.sender)
-        nonReentrant 
-    {
+    function changeBet(
+        uint256 _challengeId,
+        bool _bettingFor
+    ) external payable virtual override nonReentrant onlyBettors(msg.sender) {
         address caller = msg.sender;
-        if (challengeToChallenger[_challengeId] != caller) revert ChallengeCanOnlyBeModifiedByChallenger(_challengeId, caller, challengeToChallenger[_challengeId]);
+        if (
+            challengeToBetsFor[_challengeId][caller] == 0 &&
+            challengeToBetsAgainst[_challengeId][caller] == 0
+        ) revert BettorCannotUpdateBet();
+        if (msg.value < minimumUsdValueOfBet) revert MinimumBetAmountTooSmall();
 
-        if (challengeToIncludedMetrics[_challengeId].length != _submittedMeasurements.length) revert MalformedChallengeMetricsProvided();
-        if (challengeToChallengeStatus[_challengeId] != STATUS_ACTIVE) revert ChallengeIsNotActive(_challengeId, challengeToChallengeStatus[_challengeId]);
+        if (challengeToChallengeStatus[_challengeId] != STATUS_INACTIVE) {
+            revert ChallengeCannotBeModified();
+        }
+    }
+
+    /**
+     * @inheritdoc IChallenge
+     */
+    function submitMeasurements(
+        uint256 _challengeId,
+        uint256[] calldata _submittedMeasurements
+    ) external virtual override onlyChallengers(msg.sender) nonReentrant {
+        address caller = msg.sender;
+        if (challengeToChallenger[_challengeId] != caller)
+            revert ChallengeCanOnlyBeModifiedByChallenger(
+                _challengeId,
+                caller,
+                challengeToChallenger[_challengeId]
+            );
+
+        if (
+            challengeToIncludedMetrics[_challengeId].length !=
+            _submittedMeasurements.length
+        ) revert MalformedChallengeMetricsProvided();
+        if (challengeToChallengeStatus[_challengeId] != STATUS_ACTIVE)
+            revert ChallengeIsNotActive(
+                _challengeId,
+                challengeToChallengeStatus[_challengeId]
+            );
 
         uint256 timestamp = block.timestamp;
-        if (timestamp >= (challengeToStartTime[_challengeId] + challengeToChallengeLength[_challengeId])) {
+        if (
+            timestamp >=
+            (challengeToStartTime[_challengeId] +
+                challengeToChallengeLength[_challengeId])
+        ) {
             challengeToChallengeStatus[_challengeId] = STATUS_EXPIRED;
             revert ChallengeIsExpired(_challengeId);
         }
 
         for (uint256 i = 0; i < _submittedMeasurements.length; ) {
             uint8 currentMetric = challengeToIncludedMetrics[_challengeId][i];
-            challengeToFinalMetricMeasurements[_challengeId][currentMetric] = _submittedMeasurements[i];
+            challengeToFinalMetricMeasurements[_challengeId][
+                currentMetric
+            ] = _submittedMeasurements[i];
             unchecked {
                 i++;
             }
@@ -487,7 +583,11 @@ contract Challenge is
         if (address(vault) == address(0)) revert VaultNotSet();
 
         uint256 timestamp = block.timestamp;
-        if (timestamp < (challengeToStartTime[_challengeId] + challengeToChallengeLength[_challengeId])) {
+        if (
+            timestamp <
+            (challengeToStartTime[_challengeId] +
+                challengeToChallengeLength[_challengeId])
+        ) {
             revert ChallengeIsActive(_challengeId);
         }
         uint256 initialGas = gasleft();
@@ -496,52 +596,71 @@ contract Challenge is
             uint256 gasUsed = initialGas - gasleft();
             emit GasUsed(owner(), gasUsed);
         }
-        
-        if (challengeToWinningsPaid[_challengeId] > 0) revert WinningsAlreadyPaid(_challengeId);
+
+        if (challengeToWinningsPaid[_challengeId] > 0)
+            revert WinningsAlreadyPaid(_challengeId);
 
         bool challengeWon = true;
-        for (uint8 i = 0; i < challengeToIncludedMetrics[_challengeId].length;) {
-            if (challengeToFinalMetricMeasurements[_challengeId][i] < challengeToTargetMetricMeasurements[_challengeId][i]) {
+        for (
+            uint8 i = 0;
+            i < challengeToIncludedMetrics[_challengeId].length;
+
+        ) {
+            if (
+                challengeToFinalMetricMeasurements[_challengeId][i] <
+                challengeToTargetMetricMeasurements[_challengeId][i]
+            ) {
                 challengeWon = false;
                 break;
             }
-            unchecked { i++; }
+            unchecked {
+                i++;
+            }
         }
-        
+
         uint256 totalAmountToSplit;
         uint256 totalAmountBetCorrectly;
         address[] memory bettors = challengeToBettors[_challengeId];
-        
+
         if (challengeWon) {
             challengeToChallengeStatus[_challengeId] = STATUS_CHALLENGER_WON;
             totalAmountToSplit = challengeToTotalAmountBetAgainst[_challengeId];
-            totalAmountBetCorrectly = challengeToTotalAmountBetFor[_challengeId];
+            totalAmountBetCorrectly = challengeToTotalAmountBetFor[
+                _challengeId
+            ];
         } else {
             challengeToChallengeStatus[_challengeId] = STATUS_CHALLENGER_LOST;
             totalAmountToSplit = challengeToTotalAmountBetFor[_challengeId];
-            totalAmountBetCorrectly = challengeToTotalAmountBetAgainst[_challengeId];
+            totalAmountBetCorrectly = challengeToTotalAmountBetAgainst[
+                _challengeId
+            ];
         }
-        
-        for (uint256 i = 0; i < bettors.length;) {
+
+        for (uint256 i = 0; i < bettors.length; ) {
             address bettor = bettors[i];
-            uint256 betAmount = challengeWon ? challengeToBetsFor[_challengeId][bettor] : challengeToBetsAgainst[_challengeId][bettor];
+            uint256 betAmount = challengeWon
+                ? challengeToBetsFor[_challengeId][bettor]
+                : challengeToBetsAgainst[_challengeId][bettor];
             if (betAmount > 0) {
-                uint256 share = (betAmount * totalAmountToSplit) / totalAmountBetCorrectly;
+                uint256 share = (betAmount * totalAmountToSplit) /
+                    totalAmountBetCorrectly;
                 vault.withdrawFunds(payable(bettor), betAmount + share, false);
                 emit WinningsDistributed(_challengeId, bettor, share);
             }
-            unchecked { i++; }
+            unchecked {
+                i++;
+            }
         }
-        
+
         challengeToWinningsPaid[_challengeId] = 1; // 1 for true, 0 for false. Uint8 is more gas-efficient than bool.
     }
-    
+
     // ============================ //
     //      Contract Functions      //
     // ============================ //
 
     function getLatestPrice() public view returns (uint256) {
-        (, int price,,,) = dataFeed.latestRoundData();
+        (, int price, , , ) = dataFeed.latestRoundData();
         return uint256(price) * 1e6;
     }
 
@@ -586,10 +705,7 @@ contract Challenge is
      * Requirements:
      * - The caller must have the admin role.
      */
-    function _authorizeUpgrade(address newImplementation)
-        internal
-        override
-        virtual
-        onlyOwner
-    {}
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal virtual override onlyOwner {}
 }

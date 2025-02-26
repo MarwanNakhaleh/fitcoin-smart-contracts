@@ -29,15 +29,13 @@ interface IMultiplayerChallenge is IChallenge {
     /**
      * @notice Creates a new multiplayer challenge.
      * @param _lengthOfChallenge The challenge duration in seconds.
-     * @param _challengeMetrics An array of metric identifiers for the challenge.
-     * @param _targetMeasurementsForEachMetric The target measurement for each metric.
+     * @param _challengeMetric The metric for the challenge, there can only be one due to potential differences and weights of values.
      * @param _maxCompetitors The number of competitors that can join this challenge (must be > 0 and no more than the global maximum).
      * @return The challenge ID.
      */
     function createMultiplayerChallenge(
         uint256 _lengthOfChallenge, 
-        uint8[] calldata _challengeMetrics, 
-        uint256[] calldata _targetMeasurementsForEachMetric,
+        uint8  _challengeMetric,
         uint256 _maxCompetitors
     ) external returns(uint256);
     
@@ -54,10 +52,12 @@ interface IMultiplayerChallenge is IChallenge {
     function leaveChallenge(uint256 _challengeId) external;
     
     /**
-     * @notice Submits measurements for a competitor. If the submitted (aggregated) measurements exceed the current leader's score,
-     * the caller becomes the new leader.
+     * @notice Submits measurement for a competitor. If the submitted (aggregated) measurement exceed the current leader's score,
+     * the caller becomes the new leader. Note that a submitted measurement will override any previous measurements for that competitor. 
+     * Also note that there can only be 1 measurement submitted. 
+     * This function overrides the IChallenge.submitMeasurements function, so it still needs an array.
      * @param _challengeId The challenge ID.
-     * @param _submittedMeasurements An array of measurements corresponding to the challenge metrics.
+     * @param _submittedMeasurements An array of measurements corresponding to the challenge metric.
      */
     function submitMeasurements(uint256 _challengeId, uint256[] calldata _submittedMeasurements) external;
     

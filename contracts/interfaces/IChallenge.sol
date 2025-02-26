@@ -154,6 +154,15 @@ interface IChallenge {
      */
     function changeBet(uint256 _challengeId, bool _bettingFor) external payable;
 
+    /**
+     * @notice Allows someone who has already bet to cancel their bet
+     * @param _challengeId The challenge on which you want to cancel your bet
+     *
+     * Requirements:
+     * - The caller is on the bettor whitelist 
+     */
+    function cancelBet(uint256 _challengeId) external payable;
+
      /** 
      * @notice Provides data to determine if a challenger has succeeded
      * @param _challengeId The challenge to which the measurements apply
