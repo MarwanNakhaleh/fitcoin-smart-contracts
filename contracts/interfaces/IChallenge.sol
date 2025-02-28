@@ -8,6 +8,34 @@ pragma solidity ^0.8.22;
  */
 interface IChallenge {
     /**
+     * @dev Emitted when the maximum number of bettors per challenge is set.
+     * @param oldValue The previous maximum number of bettors per challenge.
+     * @param newValue The new maximum number of bettors per challenge.
+     */
+    event MaximumNumberOfBettorsPerChallengeSet(uint256 oldValue, uint256 newValue);
+
+    /**
+     * @dev Emitted when the maximum challenge length is set.
+     * @param oldValue The previous maximum challenge length.
+     * @param newValue The new maximum challenge length.
+     */
+    event MaximumChallengeLengthSet(uint256 oldValue, uint256 newValue);
+    
+    /**
+     * @dev Emitted when the maximum number of challenge metrics is set.
+     * @param oldValue The previous maximum number of challenge metrics.
+     * @param newValue The new maximum number of challenge metrics.
+     */
+    event MaximumNumberOfChallengeMetricsSet(uint256 oldValue, uint256 newValue);
+
+    /**
+     * @dev Emitted when the minimum bet value is set.
+     * @param oldValue The previous minimum bet value.
+     * @param newValue The new minimum bet value.
+     */
+    event MinimumBetValueSet(uint256 oldValue, uint256 newValue);
+
+    /**
      * @dev Emitted when a new challenger is allowed to create challenges.
      * @param challenger The address of the eligible challenger.
      */
@@ -41,13 +69,6 @@ interface IChallenge {
      * @param challengeId The ID of the challenge
      */
     event ChallengeStarted(address indexed challenger, uint256 indexed challengeId);
-
-    /**
-     * @dev Emitted when the minimum bet value is updated from the original value
-     * @param oldValue The previous minimum bet value, will be 0 on contract initialization.
-     * @param newValue The current minimum bet value.
-     */
-    event MinimumBetValueSet(uint256 oldValue, uint256 newValue);
 
     /**
      * @dev Emitted when a user makes a bet
@@ -122,7 +143,7 @@ interface IChallenge {
      * - The caller owns the contract
      * - The value is greater than 0
      */
-    function changeMinimumBetValue(uint256 _newMinimumValue) external;
+    function setMinimumBetValue(uint256 _newMinimumValue) external;
 
     
     /** 

@@ -141,6 +141,12 @@ contract Challenge is
     /// @dev error thrown when the maximum number of bettors per challenge is too small
     error MaximumNumberOfBettorsPerChallengeTooSmall();
 
+    /// @dev error thrown when the maximum number of challenge metrics is too small
+    error MaximumNumberOfChallengeMetricsTooSmall();
+
+    /// @dev error thrown when the minimum USD value of a bet is too small
+    error MinimumUsdValueOfBetTooSmall();
+
     // errors for challengers
     /// @dev Error thrown when a non-whitelisted address attempts to do a challenger action
     error ChallengerNotInWhitelist();
@@ -273,6 +279,7 @@ contract Challenge is
     ) external onlyOwner {
         if (_maximumNumberOfBettorsPerChallenge < (MINIMUM_NUMBER_OF_BETTORS_AGAINST + 1)) revert MaximumNumberOfBettorsPerChallengeTooSmall();
         maximumNumberOfBettorsPerChallenge = _maximumNumberOfBettorsPerChallenge;
+        emit MaximumNumberOfBettorsPerChallengeSet(maximumNumberOfBettorsPerChallenge, _maximumNumberOfBettorsPerChallenge);
     }
 
      /// @notice Sets the maximum number of bettors per challenge
@@ -281,18 +288,51 @@ contract Challenge is
     ) external onlyOwner {
         if (_maximumChallengeLengthInSeconds == 0) revert ChallengeLengthTooShort();
         maximumChallengeLengthInSeconds = _maximumChallengeLengthInSeconds;
+        emit MaximumChallengeLengthSet(maximumChallengeLengthInSeconds, _maximumChallengeLengthInSeconds);
+    }
+
+    /// @notice Sets the maximum number of challenge metrics
+    function setMaximumNumberOfChallengeMetrics(
+        uint8 _maximumNumberOfChallengeMetrics
+    ) external onlyOwner {
+        if (_maximumNumberOfChallengeMetrics == 0) revert MaximumNumberOfChallengeMetricsTooSmall();
+        maximumNumberOfChallengeMetrics = _maximumNumberOfChallengeMetrics;
+        emit MaximumNumberOfChallengeMetricsSet(maximumNumberOfChallengeMetrics, _maximumNumberOfChallengeMetrics);
+    }
+
+    /**
+     * @inheritdoc IChallenge
+     */
+    function setMinimumBetValue(
+        uint256 _newMinimumValue
+    ) external virtual override onlyOwner {
+        if (_newMinimumValue == 0) revert MinimumBetAmountTooSmall();
+        minimumUsdValueOfBet = _newMinimumValue;
+        emit MinimumBetValueSet(minimumUsdValueOfBet, _newMinimumValue);
     }
 
     // ============================ //
     //         Getters              //
     // ============================ //
 
+    /// @notice Gets the minimum USD value of a bet
     function getMinimumUsdValueOfBet() external view returns (uint256) {
         return minimumUsdValueOfBet;
     }
 
+    /// @notice Gets the maximum number of bettors per challenge
     function getMaximumNumberOfBettorsPerChallenge() external view returns (uint32) {
         return maximumNumberOfBettorsPerChallenge;
+    }
+
+    /// @notice Gets the maximum challenge length
+    function getMaximumChallengeLength() external view returns (uint32) {
+        return maximumChallengeLengthInSeconds;
+    }
+
+    /// @notice Gets the maximum number of challenge metrics
+    function getMaximumNumberOfChallengeMetrics() external view returns (uint8) {
+        return maximumNumberOfChallengeMetrics;
     }
 
     // ============================ //
@@ -323,6 +363,9 @@ contract Challenge is
         uint8 _maximumNumberOfChallengeMetrics
     ) public initializer {
         if (_minimumBetValue == 0) revert MinimumBetAmountTooSmall();
+        if (_maximumNumberOfBettorsPerChallenge < (MINIMUM_NUMBER_OF_BETTORS_AGAINST + 1)) revert MaximumNumberOfBettorsPerChallengeTooSmall();
+        if (_maximumChallengeLengthInSeconds == 0) revert ChallengeLengthTooShort();
+        if (_maximumNumberOfChallengeMetrics == 0) revert MaximumNumberOfChallengeMetricsTooSmall();
         __ReentrancyGuard_init();
         __Pausable_init();
         __Ownable_init(msg.sender);
@@ -337,6 +380,9 @@ contract Challenge is
         latestChallengeId = 0;
 
         emit MinimumBetValueSet(0, _minimumBetValue);
+        emit MaximumNumberOfBettorsPerChallengeSet(0, _maximumNumberOfBettorsPerChallenge);
+        emit MaximumChallengeLengthSet(0, _maximumChallengeLengthInSeconds);
+        emit MaximumNumberOfChallengeMetricsSet(0, _maximumNumberOfChallengeMetrics);
     }
 
     // ============================ //
@@ -390,17 +436,6 @@ contract Challenge is
         challengerWhitelist[challenger] = false;
 
         emit ChallengerRemoved(challenger);
-    }
-
-    /**
-     * @inheritdoc IChallenge
-     */
-    function changeMinimumBetValue(
-        uint256 _newMinimumValue
-    ) external virtual override onlyOwner {
-        if (_newMinimumValue == 0) revert MinimumBetAmountTooSmall();
-
-        minimumUsdValueOfBet = _newMinimumValue;
     }
 
     /**
