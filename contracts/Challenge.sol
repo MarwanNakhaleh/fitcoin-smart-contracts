@@ -168,6 +168,9 @@ contract Challenge is
     /// @dev Error thrown when a challenge is expired when it must not be expired for the action requested
     error ChallengeIsExpired(uint256 challengeId);
 
+    /// @dev Error thrown when a challenge has not yet started when it must be active or complete for the action requested
+    error ChallengeNotYetStarted(uint256 challengeId);
+
     /// @dev Error thrown when there is a mismatch between the number of challenge metrics and the number of measurements provided
     error MalformedChallengeMetricsProvided();
 
@@ -198,6 +201,20 @@ contract Challenge is
     /// @dev Error thrown when a caller attempts to start a challenge with a greater number of metrics than the maximum allowed
     error TooManyChallengeMetrics();
 
+    // price feed errors
+
+    /// @dev Error thrown when the price feed round is not complete
+    error PriceFeedRoundNotComplete();
+
+    /// @dev Error thrown when the price feed is stale
+    error StalePrice();
+
+    /// @dev Error thrown when the price feed is too old
+    error PriceFeedTooOld();
+
+    /// @dev Error thrown when the price feed is invalid
+    error InvalidPrice(); 
+
     // ============================ //
     //          Modifiers           //
     // ============================ //
@@ -213,19 +230,18 @@ contract Challenge is
     }
 
     modifier betIsGreaterThanOrEqualToMinimumBetValue() {
-        if (msg.value < minimumUsdValueOfBet) revert MinimumBetAmountTooSmall();
+        uint256 ethPrice = getLatestPrice();
+        uint256 betValueInUsd = (msg.value * ethPrice) / 1e8; // Adjust for price feed decimals
+        if (betValueInUsd < minimumUsdValueOfBet) revert MinimumBetAmountTooSmall();
         _;
     }
 
-    modifier checkBettingEligibility(uint256 _challengeId, address caller) {
-        if (!bettorWhitelist[caller]) {
+    modifier checkBettingEligibility(uint256 _challengeId) {
+        if (!bettorWhitelist[msg.sender]) {
             revert BettorNotInWhitelist();
         }
         if (address(vault) == address(0)) {
             revert VaultNotSet();
-        }
-        if (msg.value < minimumUsdValueOfBet) {
-            revert MinimumBetAmountTooSmall();
         }
         if (challengeToChallengeStatus[_challengeId] != STATUS_INACTIVE) {
             revert ChallengeCannotBeModified();
@@ -312,7 +328,7 @@ contract Challenge is
      */
     function addNewChallenger(
         address challenger
-    ) external virtual override onlyOwner {
+    ) public virtual override onlyOwner {
         if (challengerWhitelist[challenger])
             revert ChallengerAlreadyInWhitelist();
 
@@ -326,7 +342,7 @@ contract Challenge is
     /**
      * @inheritdoc IChallenge
      */
-    function addNewBettor(address bettor) external virtual override onlyOwner {
+    function addNewBettor(address bettor) public virtual override onlyOwner {
         if (bettorWhitelist[bettor]) revert BettorAlreadyInWhitelist();
 
         bettorWhitelist[bettor] = true;
@@ -451,7 +467,7 @@ contract Challenge is
     function placeBet(
         uint256 _challengeId,
         bool _bettingFor
-    ) external payable virtual override nonReentrant checkBettingEligibility(_challengeId, msg.sender) {
+    ) external payable virtual override nonReentrant checkBettingEligibility(_challengeId) betIsGreaterThanOrEqualToMinimumBetValue {
         if (challengeToChallengeStatus[_challengeId] == STATUS_ACTIVE)
             revert ChallengeIsActive(_challengeId);
         if (msg.value < minimumUsdValueOfBet) revert MinimumBetAmountTooSmall();
@@ -502,7 +518,7 @@ contract Challenge is
      */
     function cancelBet(
         uint256 _challengeId
-    ) public payable virtual override nonReentrant checkBettingEligibility(_challengeId, msg.sender) {
+    ) public payable virtual override nonReentrant checkBettingEligibility(_challengeId) {
         address caller = msg.sender;
         if (
             challengeToBetsFor[_challengeId][caller] == 0 &&
@@ -590,25 +606,25 @@ contract Challenge is
         ) {
             revert ChallengeIsActive(_challengeId);
         }
-        uint256 initialGas = gasleft();
+        
         if (challengeToChallengeStatus[_challengeId] != STATUS_EXPIRED) {
             challengeToChallengeStatus[_challengeId] = STATUS_EXPIRED;
-            uint256 gasUsed = initialGas - gasleft();
-            emit GasUsed(owner(), gasUsed);
         }
 
         if (challengeToWinningsPaid[_challengeId] > 0)
             revert WinningsAlreadyPaid(_challengeId);
 
         bool challengeWon = true;
-        for (
-            uint8 i = 0;
-            i < challengeToIncludedMetrics[_challengeId].length;
-
-        ) {
+        
+        // Use local variables to reduce SLOADs
+        uint8[] memory metrics = challengeToIncludedMetrics[_challengeId];
+        uint256 metricsLength = metrics.length;
+        
+        for (uint8 i = 0; i < metricsLength; ) {
+            uint8 metricType = metrics[i];
             if (
-                challengeToFinalMetricMeasurements[_challengeId][i] <
-                challengeToTargetMetricMeasurements[_challengeId][i]
+                challengeToFinalMetricMeasurements[_challengeId][metricType] <
+                challengeToTargetMetricMeasurements[_challengeId][metricType]
             ) {
                 challengeWon = false;
                 break;
@@ -621,6 +637,7 @@ contract Challenge is
         uint256 totalAmountToSplit;
         uint256 totalAmountBetCorrectly;
         address[] memory bettors = challengeToBettors[_challengeId];
+        uint256 bettorsLength = bettors.length;
 
         if (challengeWon) {
             challengeToChallengeStatus[_challengeId] = STATUS_CHALLENGER_WON;
@@ -636,19 +653,47 @@ contract Challenge is
             ];
         }
 
-        for (uint256 i = 0; i < bettors.length; ) {
-            address bettor = bettors[i];
-            uint256 betAmount = challengeWon
-                ? challengeToBetsFor[_challengeId][bettor]
-                : challengeToBetsAgainst[_challengeId][bettor];
-            if (betAmount > 0) {
-                uint256 share = (betAmount * totalAmountToSplit) /
-                    totalAmountBetCorrectly;
-                vault.withdrawFunds(payable(bettor), betAmount + share, false);
-                emit WinningsDistributed(_challengeId, bettor, share);
+        // Make sure we avoid division by zero
+        if (totalAmountBetCorrectly == 0) {
+            challengeToWinningsPaid[_challengeId] = 1;
+            return;
+        }
+
+        // Process bettors in batches to avoid hitting gas limits
+        uint256 batchSize = 10; // Can be adjusted based on gas analysis
+        uint256 numBatches = (bettorsLength + batchSize - 1) / batchSize;
+
+        for (uint256 batch = 0; batch < numBatches; ) {
+            uint256 startIdx = batch * batchSize;
+            uint256 endIdx = startIdx + batchSize;
+            if (endIdx > bettorsLength) {
+                endIdx = bettorsLength;
+            }
+
+            for (uint256 i = startIdx; i < endIdx; ) {
+                address bettor = bettors[i];
+                uint256 betAmount = challengeWon
+                    ? challengeToBetsFor[_challengeId][bettor]
+                    : challengeToBetsAgainst[_challengeId][bettor];
+                
+                if (betAmount > 0) {
+                    uint256 share = (betAmount * totalAmountToSplit) /
+                        totalAmountBetCorrectly;
+                    
+                    // Use a try/catch to handle potential failures during withdrawal
+                    try vault.withdrawFunds(payable(bettor), betAmount + share, false) {
+                        emit WinningsDistributed(_challengeId, bettor, share);
+                    } catch {
+                        // Log the failure but continue processing other bettors
+                        emit WinningsDistributionFailed(_challengeId, bettor, betAmount + share);
+                    }
+                }
+                unchecked {
+                    i++;
+                }
             }
             unchecked {
-                i++;
+                batch++;
             }
         }
 
@@ -660,7 +705,32 @@ contract Challenge is
     // ============================ //
 
     function getLatestPrice() public view returns (uint256) {
-        (, int price, , , ) = dataFeed.latestRoundData();
+        (
+            uint80 roundId,
+            int price,
+            uint startedAt,
+            uint timeStamp,
+            uint80 answeredInRound
+        ) = dataFeed.latestRoundData();
+        
+        // Check for stale data
+        if(timeStamp <= 0) {
+            revert PriceFeedRoundNotComplete();
+        }
+        if(answeredInRound < roundId) {
+            revert StalePrice();
+        }
+        
+        // Check if the price feed is stale (older than 24 hours)
+        if(block.timestamp - timeStamp > 24 hours) {
+            revert PriceFeedTooOld();
+        }
+        
+        // Price must be positive
+        if(price < 0) {
+            revert InvalidPrice();
+        }
+        
         return uint256(price) * 1e6;
     }
 

@@ -19,6 +19,12 @@ interface IMultiplayerChallenge is IChallenge {
     
     /// @dev Emitted when the leader for a challenge is updated.
     event LeaderUpdated(uint256 indexed challengeId, address indexed newLeader, uint256 newScore);
+
+    /// @dev Emitted when a competitor submits a measurement that does not result in a new leader.
+    event LeaderNotUpdated(uint256 indexed challengeId, address indexed competitor, address indexed incumbentLeader, uint256 measurementToBeat);
+
+    /// @dev Emitted when the challenger for a challenge is changed.
+    event ChallengerChanged(uint256 indexed challengeId, address indexed oldChallenger, address indexed newChallenger);
     
     /**
      * @notice Sets the contract-wide maximum number of competitors allowed per challenge.

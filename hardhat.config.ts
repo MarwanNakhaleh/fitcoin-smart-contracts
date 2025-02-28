@@ -31,10 +31,14 @@ const config: HardhatUserConfig = {
   },
   networks: {
     hardhat: {
-      forking: {
-        url: process.env.BASE_SEPOLIA_RPC_URL as string,
-        blockNumber: 4776540
-      },
+
+    },
+    running: {
+      url: "http://localhost:8545",
+      chainId: 1337,
+    },
+    localhost: {
+      url: "http://localhost:8545"
     },
     baseSepolia: {
       url: process.env.BASE_SEPOLIA_RPC_URL as string,
@@ -59,11 +63,7 @@ const config: HardhatUserConfig = {
     optimism: {
       url: process.env.OPTIMISM_RPC_URL as string,
       accounts: [process.env.DEPLOYER_PRIVATE_KEY as string],
-    },
-    running: {
-      url: "http://localhost:8545",
-      chainId: 1337,
-    },
+    }
   }
 };
 

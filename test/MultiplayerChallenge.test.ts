@@ -3,12 +3,24 @@ import { Signer, BigNumberish } from "ethers";
 import { expect } from "chai";
 import { MultiplayerChallenge, MultiplayerChallenge__factory, Vault } from "../typechain";
 
+const findEventArgs = (logs: any, eventName: string) => {
+  let _event = null;
+
+  for (const event of logs) {
+    if (event.fragment && event.fragment.name === eventName) {
+      _event = event.args;
+    }
+  }
+  return _event
+}
+
 describe("MultiplayerChallenge Tests", function () {
   let multiplayerChallenge: MultiplayerChallenge;
   let vaultContract: Vault;
   let owner: Signer;
   let competitor1: Signer;
   let competitor2: Signer;
+  let competitor3: Signer;
   let nonCompetitor: Signer;
   let challenger: Signer;
   let challengerAddress: string;
@@ -19,12 +31,12 @@ describe("MultiplayerChallenge Tests", function () {
   const ethPriceFactorConversionUnits: bigint = BigInt(1e14); // number of wei in one ETH
   const minimumUsdBetValue: bigint = BigInt(10) * ethPriceFactorConversionUnits;
   const maximumNumberOfChallengeCompetitors = 3;
-  
+
   const CHALLENGE_STEPS: BigNumberish = 0;
   const CHALLENGE_MILEAGE: BigNumberish = 1;
 
   beforeEach(async function () {
-    [owner, competitor1, competitor2, nonCompetitor, challenger] = await ethers.getSigners();
+    [owner, competitor1, competitor2, competitor3, nonCompetitor, challenger] = await ethers.getSigners();
     challengerAddress = await challenger.getAddress();
 
     // Deploy the mock price feed.
@@ -43,9 +55,9 @@ describe("MultiplayerChallenge Tests", function () {
     multiplayerChallenge = await upgrades.deployProxy(
       MultiplayerChallengeFactory,
       [
-        minimumUsdBetValue, 
+        minimumUsdBetValue,
         maximumNumberOfChallengeCompetitors,
-        mockPriceFeedAddress, 
+        mockPriceFeedAddress,
         maximumNumberOfBettorsPerChallenge,
         maximumChallengeLengthInSeconds,
         maximumNumberOfChallengeMetrics
@@ -128,12 +140,15 @@ describe("MultiplayerChallenge Tests", function () {
     });
   });
 
-  describe("Multiplayer challenge leader updates", function () {
+  describe("Multiplayer challenge leader updates", () => {
     const challengeMetrics: BigNumberish = CHALLENGE_STEPS;
     const challengeLength = BigInt(60 * 60); // 1 hour
     let challengeId: bigint;
 
-    beforeEach(async function () {
+    let competitor1Address: string;
+    let competitor2Address: string;
+
+    beforeEach(async () => {
       // Set a global maximum.
       await multiplayerChallenge.connect(owner).setMaximumNumberOfChallengeCompetitors(5);
       // Create a challenge with a cap of 3 competitors.
@@ -148,41 +163,174 @@ describe("MultiplayerChallenge Tests", function () {
 
       // Add two more competitors.
       await multiplayerChallenge.connect(competitor1).joinChallenge(challengeId);
+      competitor1Address = await competitor1.getAddress();
+
       await multiplayerChallenge.connect(competitor2).joinChallenge(challengeId);
+      competitor2Address = await competitor2.getAddress();
     });
 
-    it("should revert starting the challenge if there are not enough competitors", async function () {
+    it("should revert starting the challenge if there are not enough competitors", async () => {
       // In this test, create a new challenge where only the creator is a competitor.
-      const tx = await multiplayerChallenge.connect(challenger).createMultiplayerChallenge(
+      await multiplayerChallenge.connect(challenger).createMultiplayerChallenge(
         challengeLength,
         challengeMetrics,
         2
       );
-      await tx.wait();
       const challengeIds = await multiplayerChallenge.getChallengesForChallenger(challengerAddress);
       const newChallengeId = challengeIds[challengeIds.length - 1];
       await expect(multiplayerChallenge.connect(challenger).startChallenge(newChallengeId))
         .to.be.revertedWithCustomError(multiplayerChallenge, "NotEnoughCompetitors");
     });
 
-    it("should update the leader when a competitor submits a higher aggregated score", async function () {
-      expect(await multiplayerChallenge.connect(challenger).startChallenge(challengeId)).to.be.revertedWithCustomError(multiplayerChallenge, "ChallengeIsActive");
+    it("should update the leader when a competitor submits a higher aggregated score", async () => {
+      await multiplayerChallenge.connect(challenger).startChallenge(challengeId);
 
       const challengerNumberOfSteps: BigNumberish = 10000;
-      await multiplayerChallenge.connect(challenger).submitMeasurements(challengeId, [challengerNumberOfSteps]);
+      await multiplayerChallenge.connect(challenger)
+        .submitMeasurements(
+          challengeId,
+          [challengerNumberOfSteps]
+        );
       let leader = await multiplayerChallenge.getLeader(challengeId);
       expect(leader).to.equal(challengerAddress);
 
+      expect(await multiplayerChallenge.challengeToCompetitorMeasurements(challengeId, challengerAddress)).to.equal(challengerNumberOfSteps);
+      expect(await multiplayerChallenge.challengeToCompetitorMeasurements(challengeId, competitor1Address)).to.equal(0);
+      expect(await multiplayerChallenge.challengeToCompetitorMeasurements(challengeId, competitor2Address)).to.equal(0);
+
       const competitor1NumberOfSteps: BigNumberish = 15000;
-      await multiplayerChallenge.connect(competitor1).submitMeasurements(challengeId, [competitor1NumberOfSteps]);
+      await expect(
+        multiplayerChallenge.connect(competitor1)
+        .submitMeasurements(
+          challengeId, [
+            competitor1NumberOfSteps]
+          )
+        ).to.emit(multiplayerChallenge, "LeaderUpdated");
+
+      expect(await multiplayerChallenge.challengeToCompetitorMeasurements(challengeId, competitor1Address)).to.equal(competitor1NumberOfSteps);
+
       leader = await multiplayerChallenge.getLeader(challengeId);
-      const competitor1Address = await competitor1.getAddress();
       expect(leader).to.equal(competitor1Address);
 
       const competitor2NumberOfSteps: BigNumberish = 12000;
       await multiplayerChallenge.connect(competitor2).submitMeasurements(challengeId, [competitor2NumberOfSteps]);
       leader = await multiplayerChallenge.getLeader(challengeId);
       expect(leader).to.equal(competitor1Address);
+    });
+  });
+
+  describe("Multiplayer challenge edge cases", function () {
+    const challengeMetrics: BigNumberish = CHALLENGE_STEPS;
+    const challengeLength = BigInt(60 * 60); // 1 hour
+    let challengeId: BigNumberish;
+
+    let competitor1Address: string;
+    let competitor2Address: string;
+
+    beforeEach(async function () {
+      // Set a global maximum.
+      await multiplayerChallenge.connect(owner).setMaximumNumberOfChallengeCompetitors(5);
+      
+      await multiplayerChallenge.connect(challenger).createMultiplayerChallenge(
+        challengeLength,
+        challengeMetrics,
+        4
+      );
+      
+      const challengeIds = await multiplayerChallenge.getChallengesForChallenger(challengerAddress);
+      challengeId = challengeIds[0];
+
+      // Add competitors
+      await multiplayerChallenge.connect(competitor1).joinChallenge(challengeId);
+      competitor1Address = await competitor1.getAddress();
+      await multiplayerChallenge.connect(competitor2).joinChallenge(challengeId);
+      competitor2Address = await competitor2.getAddress();
+    });
+
+    it("should handle ties by keeping the first leader when scores are equal", async function () {
+      // Initial submission by challenger
+      const numberOfSteps: BigNumberish = 10000;
+
+      // Start the challenge
+      await multiplayerChallenge.connect(challenger).startChallenge(challengeId);
+
+      await multiplayerChallenge.connect(challenger).submitMeasurements(challengeId, [numberOfSteps]);
+
+      let leader = await multiplayerChallenge.getLeader(challengeId);
+      expect(leader).to.equal(challengerAddress);
+
+      // Competitor1 submits the same score
+      await multiplayerChallenge.connect(competitor1).submitMeasurements(challengeId, [numberOfSteps]);
+
+      // The leader should still be the challenger (first submitter)
+      leader = await multiplayerChallenge.getLeader(challengeId);
+      expect(leader).to.equal(challengerAddress);
+
+      // Competitor2 submits a higher score
+      await multiplayerChallenge.connect(competitor2).submitMeasurements(challengeId, [numberOfSteps + 1]);
+
+      // The leader should now be competitor2
+      leader = await multiplayerChallenge.getLeader(challengeId);
+      expect(leader).to.equal(await competitor2.getAddress());
+
+      // Competitor1 submits the same score as competitor2
+      await multiplayerChallenge.connect(competitor1).submitMeasurements(challengeId, [numberOfSteps + 1]);
+
+      // The leader should still be competitor2 (first to reach that score)
+      leader = await multiplayerChallenge.getLeader(challengeId);
+      expect(leader).to.equal(await competitor2.getAddress());
+    });
+
+    it("should handle the challenger leaving their own created challenge", async function () {
+      // Ensure the challenge is not yet started
+      expect(await multiplayerChallenge.challengeToChallengeStatus(challengeId)).to.equal(0); // STATUS_INACTIVE
+
+      // adding a third competitor to double triple check the logic for the challenger leaving the challenge
+      await multiplayerChallenge.connect(competitor3).joinChallenge(challengeId);
+
+      // Challenger attempts to leave the challenge they created
+      const challengeCreatorLeavesTx = await multiplayerChallenge.connect(challenger).leaveChallenge(challengeId);
+      const result = await challengeCreatorLeavesTx.wait();
+
+      const eventArgs = findEventArgs(result?.logs, "ChallengerChanged");
+
+      // Challenge should have been passed to the first competitor
+      expect(eventArgs.length).to.equal(3);
+      expect(eventArgs[0]).to.equal(challengeId);
+      expect(eventArgs[1]).to.equal(challengerAddress);
+      expect(eventArgs[2]).to.equal(competitor1Address);
+      expect(await multiplayerChallenge.challengeToChallenger(challengeId)).to.equal(competitor1Address);
+
+      // Check the challenger is no longer in the competition
+      const competitors = await multiplayerChallenge.getCompetitors(challengeId);
+      expect(competitors).to.not.include(challengerAddress);
+
+      // If the challenger leaves, they should not be able to submit measurements
+      await expect(
+        multiplayerChallenge.connect(challenger).submitMeasurements(challengeId, [10000])
+      ).to.be.revertedWithCustomError(multiplayerChallenge, "ChallengeCompetitorNotJoined");
+
+      // The challenge should still be valid and other competitors can interact with it
+      await multiplayerChallenge.connect(competitor1).startChallenge(challengeId);
+      await multiplayerChallenge.connect(competitor1).submitMeasurements(challengeId, [10000]);
+
+      // Check that the leader is now competitor1
+      const leader = await multiplayerChallenge.getLeader(challengeId);
+      expect(leader).to.equal(await competitor1.getAddress());
+    });
+
+    it("should handle all competitors submitting a score of 0", async function () {
+      // challenge needs to be started before submitting measurements
+      await multiplayerChallenge.connect(challenger).startChallenge(challengeId);
+      
+      // All competitors submit a score of 0
+      await multiplayerChallenge.connect(challenger).submitMeasurements(challengeId, [0]);
+      await multiplayerChallenge.connect(competitor1).submitMeasurements(challengeId, [0]);
+      await multiplayerChallenge.connect(competitor2).submitMeasurements(challengeId, [0]);
+
+      // The first to submit (challenger) should be the leader in case of a tie at 0
+      const leader = await multiplayerChallenge.getLeader(challengeId);
+      expect(leader).to.equal(challengerAddress);
     });
   });
 });

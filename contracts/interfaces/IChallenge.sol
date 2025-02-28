@@ -73,6 +73,14 @@ interface IChallenge {
     event WinningsDistributed(uint256 challengeId, address bettor, uint256 share);
 
     /**
+     * @dev Emitted when a winnings distribution fails for a particular bettor
+     * @param challengeId The challenge ID
+     * @param bettor The address that failed to receive winnings
+     * @param amount The amount of winnings that failed to be distributed
+     */
+    event WinningsDistributionFailed(uint256 indexed challengeId, address indexed bettor, uint256 amount);
+
+    /**
     * @notice Retrieves all challenge IDs for a specific challenger.
     * @param challenger The address of the challenger.
     * @return An array of challenge IDs created by the challenger.

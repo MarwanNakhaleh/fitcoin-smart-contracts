@@ -44,6 +44,9 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
     /// @dev Error thrown when a caller attempts to join a challenge that is not active.
     error ChallengeCompetitorNotJoined(uint256 challengeId, address competitor);
 
+    /// @dev Error when a challenger leaves a challenge with only one competitor
+    error ChallengeHasOnlyOneCompetitor(uint256 challengeId);
+
     /// @dev Error thrown when a caller attempts to join a challenge that is full.
     error ChallengeIsFull(uint256 challengeId);
 
@@ -167,16 +170,20 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
         if (challengeToChallengeStatus[_challengeId] != STATUS_INACTIVE) {
             revert ChallengeIsActive(_challengeId);
         }
+        if (challengeCompetitors[_challengeId].length == 1) {
+            revert ChallengeHasOnlyOneCompetitor(_challengeId);
+        }
 
         address caller = msg.sender;
         bool removed = false;
         uint256 length = challengeCompetitors[_challengeId].length;
         for (uint256 i = 0; i < length; i++) {
             if (challengeCompetitors[_challengeId][i] == caller) {
-                // Move the last element to the position being deleted
-                challengeCompetitors[_challengeId][i] = challengeCompetitors[
-                    _challengeId
-                ][length - 1];
+                if (i != length - 1) {
+                    address followingCompetitor = challengeCompetitors[_challengeId][i + 1];
+                    challengeCompetitors[_challengeId][length - 1] = challengeCompetitors[_challengeId][i];
+                    challengeCompetitors[_challengeId][i] = followingCompetitor;
+                }
                 challengeCompetitors[_challengeId].pop();
                 removed = true;
                 break;
@@ -188,6 +195,13 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
         challengeHasCompetitor[_challengeId][caller] = false;
 
         emit ChallengeCompetitorLeft(_challengeId, caller);
+        
+        // if the challenger leaves, we need to set the first competitor as the new challenger
+        if(challengeToChallenger[_challengeId] == caller) {
+            address newChallenger = challengeCompetitors[_challengeId][0];
+            challengeToChallenger[_challengeId] = newChallenger;
+            emit ChallengerChanged(_challengeId, caller, newChallenger);
+        }
     }
 
     /**
@@ -226,16 +240,14 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
         }
         
         challengeToCompetitorMeasurements[_challengeId][caller] = _submittedMeasurements[0];
-        bool callerIsNewLeader = true;
-        for (uint256 i = 0; i < challengeCompetitors[_challengeId].length; i++) {
-            address competitor = challengeCompetitors[_challengeId][i];
-            if (challengeToCompetitorMeasurements[_challengeId][competitor] > _submittedMeasurements[0]) {
-                callerIsNewLeader = false;
-            }
-        }
-        if (callerIsNewLeader) {
+        address incumbentLeader = challengeLeader[_challengeId];
+
+        if (challengeToCompetitorMeasurements[_challengeId][incumbentLeader] < _submittedMeasurements[0]) {
             challengeLeader[_challengeId] = caller;
             emit LeaderUpdated(_challengeId, caller, _submittedMeasurements[0]);
+        } else {
+            uint256 measurementToBeat = challengeToCompetitorMeasurements[_challengeId][incumbentLeader];
+            emit LeaderNotUpdated(_challengeId, caller, incumbentLeader, measurementToBeat);
         }
     }
 
@@ -262,6 +274,37 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
     }
 
     /**
+     * @notice Returns the current leader's score for a challenge.
+     * @param _challengeId The challenge ID.
+     * @return The leader's score.
+     */
+    function getLeaderScore(
+        uint256 _challengeId
+    ) external view returns (uint256) {
+        address leader = challengeLeader[_challengeId];
+        return challengeToCompetitorMeasurements[_challengeId][leader];
+    }
+
+    /**
+     * @notice Gets a specific competitor's score
+     * @param _challengeId The challenge ID
+     * @param _competitor The competitor's address
+     * @return The competitor's score
+     */
+    function getCompetitorScore(
+        uint256 _challengeId, 
+        address _competitor
+    ) external view returns (uint256) {
+        if(challengeToChallengeStatus[_challengeId] != STATUS_INACTIVE) {
+            revert ChallengeNotYetStarted(_challengeId);
+        }
+        if (!challengeHasCompetitor[_challengeId][_competitor]) {
+            revert ChallengeCompetitorNotJoined(_challengeId, _competitor);
+        }
+        return challengeToCompetitorMeasurements[_challengeId][_competitor];
+    }
+
+    /**
      * @notice Optionally override startChallenge if multiplayer-specific requirements are needed.
      * Here we require that at least two competitors are present before starting.
      * @param _challengeId The challenge ID.
@@ -269,6 +312,9 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
     function startChallenge(
         uint256 _challengeId
     ) public override(Challenge, IChallenge) onlyChallengers(msg.sender) {
+        if (challengeToChallenger[_challengeId] != msg.sender) {
+            revert ChallengeCanOnlyBeModifiedByChallenger(_challengeId, msg.sender, challengeToChallenger[_challengeId]);
+        }
         if (challengeCompetitors[_challengeId].length < 2) {
             revert NotEnoughCompetitors();
         }

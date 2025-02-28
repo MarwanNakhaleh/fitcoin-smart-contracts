@@ -350,4 +350,167 @@ describe("Challenge Tests", () => {
       expect(finalBettor2Balance).to.equal(bettor2BalanceAfterBetting);
     });
   })
+
+  describe("Handling oracle data issues", () => {
+    it("should handle price feed returning zero or extremely low values", async () => {
+      // Deploy a mock price feed with zero price
+      const MockV3Aggregator = await ethers.getContractFactory("MockV3Aggregator");
+      const mockPriceFeedZero = await MockV3Aggregator.deploy(8, 0); // $0.00000000 ETH/USD price
+      const mockPriceFeedZeroAddress = await mockPriceFeedZero.getAddress();
+      
+      // Deploy a new challenge contract with the zero-price feed
+      const ChallengeFactory: Challenge__factory = await ethers.getContractFactory("Challenge");
+      const zeroPriceChallenge = await upgrades.deployProxy(
+        ChallengeFactory,
+        [
+          minimumUsdBetValue, 
+          mockPriceFeedZeroAddress, 
+          100, // maximumNumberOfBettorsPerChallenge
+          2592000, // maximumChallengeLengthInSeconds (30 days)
+          3 // maximumNumberOfChallengeMetrics
+        ],
+        { initializer: 'initialize' } 
+      );
+      
+      await zeroPriceChallenge.waitForDeployment();
+      const zeroPriceChallengeAddress = await zeroPriceChallenge.getAddress();
+
+      // Set the vault
+      const VaultFactory = await ethers.getContractFactory("Vault");
+      const vault = await upgrades.deployProxy(VaultFactory, [zeroPriceChallengeAddress], { initializer: 'initialize' });
+      await vault.waitForDeployment();
+      const vaultAddress = await vault.getAddress();
+
+      // Vault needs to be set
+      zeroPriceChallenge.connect(owner).setVault(vaultAddress);
+      
+      // Now try to get the latest price - this should not revert but should return 0
+      const price = await zeroPriceChallenge.getLatestPrice();
+      expect(price).to.equal(0);
+      
+      // With a price of 0, any bet amount should fail the minimum check
+      await zeroPriceChallenge.connect(owner).addNewChallenger(challengerAddress);
+      
+      const challengeMetricsArray: BigNumberish[] = [CHALLENGE_STEPS, CHALLENGE_MILEAGE];
+      const targetNumberOfSteps: BigNumberish = 10000;
+      const targetNumberOfMiles: BigNumberish = 5;
+      const targetMeasurementsArray = [targetNumberOfSteps, targetNumberOfMiles];
+      const challengeLengthValue = BigInt(60 * 60); // 1 hour
+      
+      await zeroPriceChallenge.connect(challenger).createChallenge(
+        challengeLengthValue, 
+        challengeMetricsArray, 
+        targetMeasurementsArray
+      );
+      
+      const challengeIds = await zeroPriceChallenge.getChallengesForChallenger(challengerAddress);
+      const challengeId = challengeIds[0];
+      
+      // Even with a large bet, it should fail since price * bet < minimum
+      await expect(
+        zeroPriceChallenge.connect(challenger).placeBet(challengeId, true, { value: parseEther("100") })
+      ).to.be.revertedWithCustomError(zeroPriceChallenge, "MinimumBetAmountTooSmall");
+    });
+  });
+
+  describe("Gas limitations with many bettors", () => {
+    it("should handle distributing winnings to many bettors without running out of gas", async () => {
+      // Deploy a new instance with a higher limit of bettors
+      const MockV3Aggregator = await ethers.getContractFactory("MockV3Aggregator");
+      const mockPriceFeed = await MockV3Aggregator.deploy(8, 200000000000); // $2000.00000000 ETH/USD price
+      const mockPriceFeedAddress = await mockPriceFeed.getAddress();
+      
+      const maxBettors = 20; // Set to a reasonable number for testing - in production could be much higher
+      const ChallengeFactory = await ethers.getContractFactory("Challenge");
+      const manyBettorsChallenge = await upgrades.deployProxy(
+        ChallengeFactory,
+        [
+          minimumUsdBetValue, 
+          mockPriceFeedAddress, 
+          maxBettors,
+          2592000, // 30 days
+          3 // max metrics
+        ],
+        { initializer: 'initialize' } 
+      );
+      
+      await manyBettorsChallenge.waitForDeployment();
+      const manyBettorsChallengeAddress = await manyBettorsChallenge.getAddress();
+      
+      const vaultFactory = await ethers.getContractFactory("Vault");
+      const vault = await upgrades.deployProxy(vaultFactory, [manyBettorsChallengeAddress], { initializer: 'initialize' });
+      await vault.waitForDeployment();
+      const vaultAddress = await vault.getAddress();
+
+      manyBettorsChallenge.connect(owner).setVault(vaultAddress);
+      
+      // Create a challenge
+      await manyBettorsChallenge.connect(owner).addNewChallenger(challengerAddress);
+      
+      const challengeMetricsArray: BigNumberish[] = [CHALLENGE_STEPS];
+      const targetNumberOfSteps: BigNumberish = 10000;
+      const targetMeasurementsArray = [targetNumberOfSteps];
+      const challengeLengthValue = BigInt(60 * 60); // 1 hour
+      
+      await manyBettorsChallenge.connect(challenger).createChallenge(
+        challengeLengthValue, 
+        challengeMetricsArray, 
+        targetMeasurementsArray
+      );
+      
+      const challengeIds = await manyBettorsChallenge.getChallengesForChallenger(challengerAddress);
+      const challengeId = challengeIds[0];
+      
+      // Have the challenger place a bet
+      await manyBettorsChallenge.connect(challenger).placeBet(challengeId, true, { value: parseEther("1") });
+      
+      // Create multiple bettors and have them place bets
+      const bettors = [];
+      for(let i = 0; i < 10; i++) { // Adding 10 bettors for the test
+        const newBettor = ethers.Wallet.createRandom().connect(ethers.provider);
+        
+        // Fund the bettor
+        await owner.sendTransaction({
+          to: await newBettor.getAddress(),
+          value: parseEther("2") // Fund with 2 ETH
+        });
+        
+        // Add bettor to whitelist and place bet
+        await manyBettorsChallenge.connect(owner).addNewBettor(await newBettor.getAddress());
+        
+        if (i % 2 === 0) {
+          // Half bet for the challenger
+          await manyBettorsChallenge.connect(newBettor).placeBet(challengeId, true, { value: parseEther("1") });
+        } else {
+          // Half bet against the challenger
+          await manyBettorsChallenge.connect(newBettor).placeBet(challengeId, false, { value: parseEther("1") });
+        }
+        
+        bettors.push(newBettor);
+      }
+      
+      // Start the challenge
+      await manyBettorsChallenge.connect(challenger).startChallenge(challengeId);
+      
+      // Submit measurements that succeed
+      await manyBettorsChallenge.connect(challenger).submitMeasurements(challengeId, [10000]);
+      
+      // Move time forward past challenge end
+      const challengeStartTime = await manyBettorsChallenge.challengeToStartTime(challengeId);
+      const challengeLength = await manyBettorsChallenge.challengeToChallengeLength(challengeId);
+      const futureTimestamp = challengeStartTime + challengeLength + BigInt(100);
+      await ethers.provider.send("evm_setNextBlockTimestamp", [Number(futureTimestamp)]);
+      await ethers.provider.send("evm_mine", []);
+      
+      // Now distribute winnings - this should handle many transactions without gas issues
+      const tx = await manyBettorsChallenge.connect(owner).distributeWinnings(challengeId);
+      const receipt = await tx.wait();
+      
+      // Check the gas used is reasonable (not approaching block gas limit)
+      expect(receipt?.gasUsed).to.be.lt(5000000); // Block gas limit is typically around 30M on Ethereum
+      
+      // Check that winnings were marked as paid
+      expect(await manyBettorsChallenge.challengeToWinningsPaid(challengeId)).to.equal(1);
+    });
+  });
 });
