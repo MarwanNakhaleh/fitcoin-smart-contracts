@@ -43,13 +43,13 @@ interface IMultiplayerChallenge is IChallenge {
         uint256 _lengthOfChallenge, 
         uint8  _challengeMetric,
         uint256 _maxCompetitors
-    ) external returns(uint256);
+    ) external payable returns(uint256);
     
     /**
      * @notice Allows a user to join an existing challenge as a competitor.
      * @param _challengeId The ID of the challenge to join.
      */
-    function joinChallenge(uint256 _challengeId) external;
+    function joinChallenge(uint256 _challengeId) external payable;
 
     /**
      * @notice Allows a user to leave a challenge he joined before it starts.
@@ -66,6 +66,12 @@ interface IMultiplayerChallenge is IChallenge {
      * @param _submittedMeasurements An array of measurements corresponding to the challenge metric.
      */
     function submitMeasurements(uint256 _challengeId, uint256[] calldata _submittedMeasurements) external;
+
+    /**
+     * @notice Distributes the winnings for a challenge.
+     * @param _challengeId The ID of the challenge to distribute winnings for.
+     */
+    function distributeWinnings(uint256 _challengeId) external;
     
     /**
      * @notice Returns the list of competitors for a given challenge.

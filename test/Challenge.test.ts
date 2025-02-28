@@ -543,7 +543,7 @@ describe("Challenge Tests", () => {
         expect(receipt?.gasUsed).to.be.lt(5000000); // Block gas limit is typically around 30M on Ethereum
 
         // Check that winnings were marked as paid
-        expect(await manyBettorsChallenge.challengeToWinningsPaid(challengeId)).to.equal(1);
+        expect(await manyBettorsChallenge.challengeToWinningsPaid(challengeId)).to.be.greaterThan(0);
         
         const eachGeneratedBettorWalletAmountAfterBetting = parseEther("1");
         const receivedAmountForSuccessfulBets = parseEther("2");

@@ -203,4 +203,10 @@ interface IChallenge {
      * - If the caller is the challenger, he is not betting against himself
      */
     function submitMeasurements(uint256 _challengeId, uint256[] calldata _submittedMeasurements) external;
+
+    /**
+     * @notice Distributes the winnings for a challenge.
+     * @param _challengeId The ID of the challenge to distribute winnings for.
+     */
+    function distributeWinnings(uint256 _challengeId) external;
 }

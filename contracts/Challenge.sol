@@ -94,7 +94,7 @@ contract Challenge is
     mapping(uint256 => address) public challengeToChallenger;
 
     /// @notice Mapping to get whether or not a challenge's winnings have been paid
-    mapping(uint256 => uint8) public challengeToWinningsPaid;
+    mapping(uint256 => uint256) public challengeToWinningsPaid;
 
     /// @notice Mapping to get the target measurements for a challenge by challenge ID
     mapping(uint256 => mapping(uint8 => uint256)) challengeToTargetMetricMeasurements;
@@ -532,7 +532,7 @@ contract Challenge is
     function placeBet(
         uint256 _challengeId,
         bool _bettingFor
-    ) external payable virtual override nonReentrant checkBettingEligibility(_challengeId) betIsGreaterThanOrEqualToMinimumBetValue whenNotPaused {
+    ) public payable virtual override nonReentrant checkBettingEligibility(_challengeId) betIsGreaterThanOrEqualToMinimumBetValue whenNotPaused {
         if (challengeToChallengeStatus[_challengeId] == STATUS_ACTIVE)
             revert ChallengeIsActive(_challengeId);
         if (msg.value < minimumUsdValueOfBet) revert MinimumBetAmountTooSmall();
@@ -660,7 +660,7 @@ contract Challenge is
         }
     }
 
-    function distributeWinnings(uint256 _challengeId) external onlyOwner whenNotPaused {
+    function distributeWinnings(uint256 _challengeId) public virtual override onlyOwner whenNotPaused {
         if (address(vault) == address(0)) revert VaultNotSet();
 
         uint256 timestamp = block.timestamp;
@@ -720,7 +720,7 @@ contract Challenge is
 
         // Make sure we avoid division by zero
         if (totalAmountBetCorrectly == 0) {
-            challengeToWinningsPaid[_challengeId] = 1;
+            challengeToWinningsPaid[_challengeId] = totalAmountToSplit;
             return;
         }
 
@@ -762,7 +762,7 @@ contract Challenge is
             }
         }
 
-        challengeToWinningsPaid[_challengeId] = 1; // 1 for true, 0 for false. Uint8 is more gas-efficient than bool.
+        challengeToWinningsPaid[_challengeId] = totalAmountToSplit;
     }
 
     // ============================ //
