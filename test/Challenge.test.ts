@@ -55,6 +55,25 @@ describe("Challenge Tests", () => {
     challengerAddress = await challenger.getAddress();
   });
 
+  describe("Testing the setters", async () => {
+    it("should not allow the owner to set the maximum challenge length to be less than the minimum allowed", async () => {
+      await expect(challengeContract.connect(owner).setMaximumChallengeLength(0)).to.be.revertedWithCustomError(challengeContract, "ChallengeLengthTooShort");
+    });
+
+    it("should allow the owner to set the maximum challenge length to be the minimum allowed", async () => {
+      expect(await challengeContract.connect(owner).setMaximumChallengeLength(1)).not.to.be.reverted;
+    });
+    
+    it("should not allow the owner to set the maximum number of bettors per challenge to be less than the minimum allowed", async () => {
+      await expect(challengeContract.connect(owner).setMaximumNumberOfBettorsPerChallenge(0)).to.be.revertedWithCustomError(challengeContract, "MaximumNumberOfBettorsPerChallengeTooSmall");
+      await expect(challengeContract.connect(owner).setMaximumNumberOfBettorsPerChallenge(1)).to.be.revertedWithCustomError(challengeContract, "MaximumNumberOfBettorsPerChallengeTooSmall"); // minimum allowed is number of bettors against + 1
+    });
+
+    it("should allow the owner to set the maximum number of bettors per challenge to be the minimum allowed", async () => {
+      expect(await challengeContract.connect(owner).setMaximumNumberOfBettorsPerChallenge(2)).not.to.be.reverted;
+    });
+  });
+
   describe("Attempting to create a challenge with invalid parameters", () => {
     const challengeMetrics: BigNumberish[] = [CHALLENGE_STEPS, CHALLENGE_MILEAGE];
     const targetNumberOfSteps: BigNumberish = 10000;
@@ -436,7 +455,7 @@ describe("Challenge Tests", () => {
       
       await manyBettorsChallenge.waitForDeployment();
       const manyBettorsChallengeAddress = await manyBettorsChallenge.getAddress();
-      
+
       const vaultFactory = await ethers.getContractFactory("Vault");
       const vault = await upgrades.deployProxy(vaultFactory, [manyBettorsChallengeAddress], { initializer: 'initialize' });
       await vault.waitForDeployment();

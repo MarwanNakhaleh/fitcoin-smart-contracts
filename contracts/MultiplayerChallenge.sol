@@ -185,6 +185,7 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
                     challengeCompetitors[_challengeId][i] = followingCompetitor;
                 }
                 challengeCompetitors[_challengeId].pop();
+                
                 removed = true;
                 break;
             }
@@ -210,7 +211,7 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
     function submitMeasurements(
         uint256 _challengeId,
         uint256[] calldata _submittedMeasurements
-    ) external virtual override(Challenge, IMultiplayerChallenge) nonReentrant {
+    ) public virtual override(Challenge, IMultiplayerChallenge) nonReentrant {
         // Ensure the sender is a competitor in this challenge.
         address caller = msg.sender;
         if (!challengeHasCompetitor[_challengeId][caller]) {
@@ -269,7 +270,7 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
      */
     function getLeader(
         uint256 _challengeId
-    ) external view override returns (address) {
+    ) public view override returns (address) {
         return challengeLeader[_challengeId];
     }
 

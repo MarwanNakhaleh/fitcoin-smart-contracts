@@ -131,9 +131,17 @@ contract Challenge is
     //           Errors             //
     // ============================ //
 
+    // errors for owner
     /// @dev error thrown when the vault is not set
     error VaultNotSet();
 
+    /// @dev error thrown when the challenge length is too short
+    error ChallengeLengthTooShort();
+
+    /// @dev error thrown when the maximum number of bettors per challenge is too small
+    error MaximumNumberOfBettorsPerChallengeTooSmall();
+
+    // errors for challengers
     /// @dev Error thrown when a non-whitelisted address attempts to do a challenger action
     error ChallengerNotInWhitelist();
 
@@ -263,7 +271,28 @@ contract Challenge is
     function setMaximumNumberOfBettorsPerChallenge(
         uint32 _maximumNumberOfBettorsPerChallenge
     ) external onlyOwner {
+        if (_maximumNumberOfBettorsPerChallenge < (MINIMUM_NUMBER_OF_BETTORS_AGAINST + 1)) revert MaximumNumberOfBettorsPerChallengeTooSmall();
         maximumNumberOfBettorsPerChallenge = _maximumNumberOfBettorsPerChallenge;
+    }
+
+     /// @notice Sets the maximum number of bettors per challenge
+    function setMaximumChallengeLength(
+        uint32 _maximumChallengeLengthInSeconds
+    ) external onlyOwner {
+        if (_maximumChallengeLengthInSeconds == 0) revert ChallengeLengthTooShort();
+        maximumChallengeLengthInSeconds = _maximumChallengeLengthInSeconds;
+    }
+
+    // ============================ //
+    //         Getters              //
+    // ============================ //
+
+    function getMinimumUsdValueOfBet() external view returns (uint256) {
+        return minimumUsdValueOfBet;
+    }
+
+    function getMaximumNumberOfBettorsPerChallenge() external view returns (uint32) {
+        return maximumNumberOfBettorsPerChallenge;
     }
 
     // ============================ //
