@@ -24,4 +24,9 @@ contract MockChallengeV2 is Challenge {
     function getNewProperty() external view returns (string memory) {
         return newProperty;
     }
+
+    /// @notice Setter for the new property
+    function setNewProperty(string memory _newProperty) external onlyOwner whenNotPaused {
+        newProperty = _newProperty;
+    }
 }

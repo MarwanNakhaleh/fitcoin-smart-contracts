@@ -15,6 +15,7 @@ describe("Challenge Upgradeability", function () {
   const maxChallengeLength = 30 * 24 * 3600; // 30 days in seconds
   const maxChallengeMetrics = 3;
 
+  let ChallengeV2Factory;
   let challengeContractAddress: string;
   let deployerAddress: string;
   let userAddress: string;
@@ -49,11 +50,12 @@ describe("Challenge Upgradeability", function () {
     const vaultContractAddress = await vaultContract.getAddress();
 
     await challengeContact.setVault(vaultContractAddress);
+
+    ChallengeV2Factory = await ethers.getContractFactory("MockChallengeV2", deployer);
   });
 
   it("upgrades to ChallengeV2 and keeps the same proxy address", async () => {
     const proxyAddressBefore = await challengeContact.getAddress();
-    const ChallengeV2Factory = await ethers.getContractFactory("MockChallengeV2", deployer);
     // Upgrade the proxy to the V2 implementation.
     challengeV2 = (await upgrades.upgradeProxy(challengeContractAddress, ChallengeV2Factory)) as MockChallengeV2;
     const challengeV2AsV2 = challengeV2 as unknown as MockChallengeV2;
@@ -66,10 +68,27 @@ describe("Challenge Upgradeability", function () {
 
   it("exposes new properties from V2", async () => {
     // Cast the contract to the MockChallengeV2 type
+    challengeV2 = (await upgrades.upgradeProxy(challengeContractAddress, ChallengeV2Factory)) as MockChallengeV2;
     const challengeV2AsV2 = challengeV2 as unknown as MockChallengeV2;
+    await challengeV2AsV2.initializeV2();
 
     const newProp = await challengeV2AsV2.getNewProperty();
     expect(newProp).to.equal("v2");
+  });
+
+  it("does not allow setting any properties if the contract is paused", async () => {
+    challengeV2 = (await upgrades.upgradeProxy(challengeContractAddress, ChallengeV2Factory)) as MockChallengeV2;
+    const challengeV2AsV2 = challengeV2 as unknown as MockChallengeV2;
+    await challengeV2AsV2.initializeV2();
+
+    await challengeV2AsV2.connect(deployer).pause();
+    
+    await expect(challengeV2AsV2.connect(deployer).setNewProperty("v3")).to.be.revertedWithCustomError(challengeV2AsV2, "EnforcedPause()");
+    
+    await challengeV2AsV2.connect(deployer).unpause();
+    await challengeV2AsV2.setNewProperty("v3");
+    const newProp = await challengeV2AsV2.getNewProperty();
+    expect(newProp).to.equal("v3");
   });
 
   it("overrides functions and works as intended in V2", async () => {

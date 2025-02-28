@@ -62,7 +62,7 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
      */
     function setMaximumNumberOfChallengeCompetitors(
         uint256 _maxNum
-    ) external override onlyOwner {
+    ) external override onlyOwner whenNotPaused {
         uint256 oldValue = maximumNumberOfChallengeCompetitors;
         maximumNumberOfChallengeCompetitors = _maxNum;
         emit MaximumNumberOfChallengeCompetitorsUpdated(oldValue, _maxNum);
@@ -103,7 +103,7 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
         uint256 _lengthOfChallenge,
         uint8 _challengeMetric,
         uint256 _maxCompetitors
-    ) external override onlyChallengers(msg.sender) returns (uint256) {
+    ) external override onlyChallengers(msg.sender) whenNotPaused returns (uint256) {
         if (_maxCompetitors <= 1) {
             revert NotEnoughCompetitors();
         }
@@ -138,7 +138,7 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
      * @notice Allows a user to join an existing challenge as a competitor.
      * @param _challengeId The ID of the challenge.
      */
-    function joinChallenge(uint256 _challengeId) external override {
+    function joinChallenge(uint256 _challengeId) external override whenNotPaused {
         // Ensure the challenge is still inactive (i.e. has not started yet).
         if (challengeToChallengeStatus[_challengeId] != STATUS_INACTIVE) {
             revert ChallengeIsActive(_challengeId);
@@ -166,7 +166,7 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
      * @notice Allows a user to join an existing challenge as a competitor.
      * @param _challengeId The ID of the challenge.
      */
-    function leaveChallenge(uint256 _challengeId) external override {
+    function leaveChallenge(uint256 _challengeId) external override whenNotPaused {
         if (challengeToChallengeStatus[_challengeId] != STATUS_INACTIVE) {
             revert ChallengeIsActive(_challengeId);
         }
@@ -211,7 +211,7 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
     function submitMeasurements(
         uint256 _challengeId,
         uint256[] calldata _submittedMeasurements
-    ) public virtual override(Challenge, IMultiplayerChallenge) nonReentrant {
+    ) public virtual override(Challenge, IMultiplayerChallenge) nonReentrant whenNotPaused {
         // Ensure the sender is a competitor in this challenge.
         address caller = msg.sender;
         if (!challengeHasCompetitor[_challengeId][caller]) {
@@ -312,7 +312,7 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
      */
     function startChallenge(
         uint256 _challengeId
-    ) public override(Challenge, IChallenge) onlyChallengers(msg.sender) {
+    ) public override(Challenge, IChallenge) onlyChallengers(msg.sender) whenNotPaused {
         if (challengeToChallenger[_challengeId] != msg.sender) {
             revert ChallengeCanOnlyBeModifiedByChallenger(_challengeId, msg.sender, challengeToChallenger[_challengeId]);
         }

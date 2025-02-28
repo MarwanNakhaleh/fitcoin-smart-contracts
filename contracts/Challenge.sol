@@ -268,7 +268,7 @@ contract Challenge is
     // ============================ //
 
     /// @notice Sets the vault contract
-    function setVault(address _vault) external onlyOwner {
+    function setVault(address _vault) external onlyOwner whenNotPaused {
         if (_vault == address(0)) revert VaultNotSet();
         vault = IVault(_vault);
     }
@@ -276,7 +276,7 @@ contract Challenge is
     /// @notice Sets the maximum number of bettors per challenge
     function setMaximumNumberOfBettorsPerChallenge(
         uint32 _maximumNumberOfBettorsPerChallenge
-    ) external onlyOwner {
+    ) external onlyOwner whenNotPaused {
         if (_maximumNumberOfBettorsPerChallenge < (MINIMUM_NUMBER_OF_BETTORS_AGAINST + 1)) revert MaximumNumberOfBettorsPerChallengeTooSmall();
         maximumNumberOfBettorsPerChallenge = _maximumNumberOfBettorsPerChallenge;
         emit MaximumNumberOfBettorsPerChallengeSet(maximumNumberOfBettorsPerChallenge, _maximumNumberOfBettorsPerChallenge);
@@ -285,7 +285,7 @@ contract Challenge is
      /// @notice Sets the maximum number of bettors per challenge
     function setMaximumChallengeLength(
         uint32 _maximumChallengeLengthInSeconds
-    ) external onlyOwner {
+    ) external onlyOwner whenNotPaused {
         if (_maximumChallengeLengthInSeconds == 0) revert ChallengeLengthTooShort();
         maximumChallengeLengthInSeconds = _maximumChallengeLengthInSeconds;
         emit MaximumChallengeLengthSet(maximumChallengeLengthInSeconds, _maximumChallengeLengthInSeconds);
@@ -294,7 +294,7 @@ contract Challenge is
     /// @notice Sets the maximum number of challenge metrics
     function setMaximumNumberOfChallengeMetrics(
         uint8 _maximumNumberOfChallengeMetrics
-    ) external onlyOwner {
+    ) external onlyOwner whenNotPaused {
         if (_maximumNumberOfChallengeMetrics == 0) revert MaximumNumberOfChallengeMetricsTooSmall();
         maximumNumberOfChallengeMetrics = _maximumNumberOfChallengeMetrics;
         emit MaximumNumberOfChallengeMetricsSet(maximumNumberOfChallengeMetrics, _maximumNumberOfChallengeMetrics);
@@ -305,7 +305,7 @@ contract Challenge is
      */
     function setMinimumBetValue(
         uint256 _newMinimumValue
-    ) external virtual override onlyOwner {
+    ) external virtual override onlyOwner whenNotPaused {
         if (_newMinimumValue == 0) revert MinimumBetAmountTooSmall();
         minimumUsdValueOfBet = _newMinimumValue;
         emit MinimumBetValueSet(minimumUsdValueOfBet, _newMinimumValue);
@@ -403,7 +403,7 @@ contract Challenge is
      */
     function addNewChallenger(
         address challenger
-    ) public virtual override onlyOwner {
+    ) public virtual override onlyOwner whenNotPaused {
         if (challengerWhitelist[challenger])
             revert ChallengerAlreadyInWhitelist();
 
@@ -417,7 +417,7 @@ contract Challenge is
     /**
      * @inheritdoc IChallenge
      */
-    function addNewBettor(address bettor) public virtual override onlyOwner {
+    function addNewBettor(address bettor) public virtual override onlyOwner whenNotPaused {
         if (bettorWhitelist[bettor]) revert BettorAlreadyInWhitelist();
 
         bettorWhitelist[bettor] = true;
@@ -430,7 +430,7 @@ contract Challenge is
      */
     function removeChallenger(
         address challenger
-    ) external virtual override onlyOwner {
+    ) external virtual override onlyOwner whenNotPaused {
         if (!challengerWhitelist[challenger]) revert ChallengerNotInWhitelist();
 
         challengerWhitelist[challenger] = false;
@@ -457,6 +457,7 @@ contract Challenge is
         virtual
         nonReentrant
         onlyChallengers(msg.sender)
+        whenNotPaused
         returns (uint256)
     {
         if (_lengthOfChallenge > maximumChallengeLengthInSeconds)
@@ -507,7 +508,7 @@ contract Challenge is
      */
     function startChallenge(
         uint256 _challengeId
-    ) public virtual nonReentrant onlyChallengers(msg.sender) {
+    ) public virtual nonReentrant onlyChallengers(msg.sender) whenNotPaused {
         address challenger = msg.sender;
         if (challengeToChallenger[_challengeId] != challenger) {
             revert OnlyChallengerCanStartChallenge();
@@ -531,7 +532,7 @@ contract Challenge is
     function placeBet(
         uint256 _challengeId,
         bool _bettingFor
-    ) external payable virtual override nonReentrant checkBettingEligibility(_challengeId) betIsGreaterThanOrEqualToMinimumBetValue {
+    ) external payable virtual override nonReentrant checkBettingEligibility(_challengeId) betIsGreaterThanOrEqualToMinimumBetValue whenNotPaused {
         if (challengeToChallengeStatus[_challengeId] == STATUS_ACTIVE)
             revert ChallengeIsActive(_challengeId);
         if (msg.value < minimumUsdValueOfBet) revert MinimumBetAmountTooSmall();
@@ -582,7 +583,7 @@ contract Challenge is
      */
     function cancelBet(
         uint256 _challengeId
-    ) public payable virtual override nonReentrant checkBettingEligibility(_challengeId) {
+    ) public payable virtual override nonReentrant checkBettingEligibility(_challengeId) whenNotPaused {
         address caller = msg.sender;
         if (
             challengeToBetsFor[_challengeId][caller] == 0 &&
@@ -600,7 +601,7 @@ contract Challenge is
     function changeBet(
         uint256 _challengeId,
         bool _bettingFor
-    ) external payable virtual override nonReentrant onlyBettors(msg.sender) {
+    ) external payable virtual override nonReentrant onlyBettors(msg.sender) whenNotPaused {
         address caller = msg.sender;
         if (
             challengeToBetsFor[_challengeId][caller] == 0 &&
@@ -619,7 +620,7 @@ contract Challenge is
     function submitMeasurements(
         uint256 _challengeId,
         uint256[] calldata _submittedMeasurements
-    ) external virtual override onlyChallengers(msg.sender) nonReentrant {
+    ) external virtual override onlyChallengers(msg.sender) nonReentrant whenNotPaused {
         address caller = msg.sender;
         if (challengeToChallenger[_challengeId] != caller)
             revert ChallengeCanOnlyBeModifiedByChallenger(
@@ -659,7 +660,7 @@ contract Challenge is
         }
     }
 
-    function distributeWinnings(uint256 _challengeId) external onlyOwner {
+    function distributeWinnings(uint256 _challengeId) external onlyOwner whenNotPaused {
         if (address(vault) == address(0)) revert VaultNotSet();
 
         uint256 timestamp = block.timestamp;
@@ -811,7 +812,7 @@ contract Challenge is
      * Requirements:
      * - The caller must have the admin role.
      */
-    function pause() external onlyOwner {
+    function pause() external onlyOwner whenNotPaused {
         _pause();
     }
 
@@ -824,7 +825,7 @@ contract Challenge is
      * Requirements:
      * - The caller must have the admin role.
      */
-    function unpause() external onlyOwner {
+    function unpause() external onlyOwner whenPaused {
         _unpause();
     }
 
