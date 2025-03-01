@@ -4,10 +4,21 @@ import { Signer } from "ethers";
 import { MultiplayerChallenge, MockMultiplayerChallengeV2 } from "../typechain";
 
 const DeployV2 = async (deployer: Signer, multiplayerChallengeContractAddress: string): Promise<MockMultiplayerChallengeV2> => {
-  const MultiplayerChallengeV2Factory = await ethers.getContractFactory("MockMultiplayerChallengeV2", deployer);
+  const PriceDataFeed = await ethers.getContractFactory("PriceDataFeed");
+  const priceDataFeed = await PriceDataFeed.deploy();
+  const priceDataFeedAddress = await priceDataFeed.getAddress();
+
+  const MultiplayerChallengeV2Factory = await ethers.getContractFactory("MockMultiplayerChallengeV2", {
+    libraries: {
+      PriceDataFeed: priceDataFeedAddress
+    },
+  }, deployer);
   const multiplayerChallengeV2 = (await upgrades.upgradeProxy(
     multiplayerChallengeContractAddress, 
-    MultiplayerChallengeV2Factory
+    MultiplayerChallengeV2Factory,
+    {
+      unsafeAllow: ["external-library-linking"]
+    }
   )) as unknown as MockMultiplayerChallengeV2;
   
   const multiplayerChallengeV2AsV2 = multiplayerChallengeV2 as unknown as MockMultiplayerChallengeV2;
@@ -60,7 +71,16 @@ describe("MultiplayerChallenge Upgradeability", function () {
     challengerAddress = await challenger.getAddress();
 
     // Deploy the MultiplayerChallenge proxy
-    const MultiplayerChallengeFactory = await ethers.getContractFactory("MultiplayerChallenge", deployer);
+    const PriceDataFeed = await ethers.getContractFactory("PriceDataFeed");
+    const priceDataFeed = await PriceDataFeed.deploy();
+    const priceDataFeedAddress = await priceDataFeed.getAddress();
+
+    const MultiplayerChallengeFactory = await ethers.getContractFactory("MultiplayerChallenge", {
+      libraries: {
+        PriceDataFeed: priceDataFeedAddress
+      },
+    }, deployer);
+
     multiplayerChallengeContract = await upgrades.deployProxy(
       MultiplayerChallengeFactory,
       [
@@ -71,7 +91,10 @@ describe("MultiplayerChallenge Upgradeability", function () {
         maxChallengeLength,
         maxChallengeMetrics,
       ],
-      { initializer: "initializeMultiplayerChallenge" }
+      { 
+        initializer: "initializeMultiplayerChallenge",
+        unsafeAllow: ["external-library-linking"]
+      }
     );
 
     await multiplayerChallengeContract.waitForDeployment();
@@ -79,7 +102,10 @@ describe("MultiplayerChallenge Upgradeability", function () {
 
     // Deploy the Vault proxy and connect it to the MultiplayerChallenge
     const VaultFactory = await ethers.getContractFactory("Vault");
-    const vaultContract = await upgrades.deployProxy(VaultFactory, [multiplayerChallengeContractAddress], { initializer: 'initialize' });
+    const vaultContract = await upgrades.deployProxy(VaultFactory, [multiplayerChallengeContractAddress], { 
+  initializer: 'initialize', 
+  unsafeAllow: ["external-library-linking"]
+});
     await vaultContract.waitForDeployment();
     const vaultContractAddress = await vaultContract.getAddress();
 

@@ -49,7 +49,15 @@ describe("MultiplayerChallenge Tests", function () {
     await mockPriceFeed.waitForDeployment();
 
     // Deploy the MultiplayerChallenge proxy.
-    const MultiplayerChallengeFactory: MultiplayerChallenge__factory = await ethers.getContractFactory("MultiplayerChallenge");
+    const PriceDataFeed = await ethers.getContractFactory("PriceDataFeed");
+    const priceDataFeed = await PriceDataFeed.deploy();
+    const priceDataFeedAddress = await priceDataFeed.getAddress();
+    
+    const MultiplayerChallengeFactory = await ethers.getContractFactory("MultiplayerChallenge", {
+      libraries: {
+        PriceDataFeed: priceDataFeedAddress
+      },
+    });
     const mockPriceFeedAddress = await mockPriceFeed.getAddress();
     const maximumNumberOfBettorsPerChallenge = 100;
     const maximumNumberOfChallengeCompetitors = 3;
@@ -66,14 +74,20 @@ describe("MultiplayerChallenge Tests", function () {
         maximumChallengeLengthInSeconds,
         maximumNumberOfChallengeMetrics
       ],
-      { initializer: 'initializeMultiplayerChallenge' }
+      { 
+        initializer: 'initializeMultiplayerChallenge',
+        unsafeAllow: ["external-library-linking"]
+      }
     );
     await multiplayerChallenge.waitForDeployment();
     const multiplayerChallengeAddress = await multiplayerChallenge.getAddress();
 
     // Deploy the Vault proxy.
     const VaultFactory = await ethers.getContractFactory("Vault");
-    vaultContract = await upgrades.deployProxy(VaultFactory, [multiplayerChallengeAddress], { initializer: "initialize" });
+    vaultContract = await upgrades.deployProxy(VaultFactory, [multiplayerChallengeAddress], { 
+      initializer: "initialize",
+      unsafeAllow: ["external-library-linking"]
+    });
     await vaultContract.waitForDeployment();
     const vaultContractAddress = await vaultContract.getAddress();
 
@@ -358,7 +372,7 @@ describe("MultiplayerChallenge Tests", function () {
       initialChallengerBalance = await ethers.provider.getBalance(challengerAddress);
       initialCompetitor1Balance = await ethers.provider.getBalance(competitor1Address);
       initialCompetitor2Balance = await ethers.provider.getBalance(competitor2Address);
-      
+
       await multiplayerChallenge.connect(owner).setMaximumNumberOfChallengeCompetitors(5);
 
       await multiplayerChallenge.connect(challenger).createMultiplayerChallenge(

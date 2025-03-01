@@ -25,13 +25,23 @@ describe("Challenge Tests", () => {
   let maximumNumberOfChallengeMetrics: bigint;
 
   beforeEach(async () => {
-    const ChallengeFactory: Challenge__factory = await ethers.getContractFactory("Challenge");
-    [owner, bettor, bettor2, challenger] = await ethers.getSigners();
-
     // Add mock price feed
     const MockV3Aggregator = await ethers.getContractFactory("MockV3Aggregator");
     const mockPriceFeed = await MockV3Aggregator.deploy(8, 200000000000); // 8 decimals, $2000.00000000 ETH/USD price
     const mockPriceFeedAddress = await mockPriceFeed.getAddress();
+
+    const PriceDataFeed = await ethers.getContractFactory("PriceDataFeed");
+    const priceDataFeed = await PriceDataFeed.deploy(); // 8 decimals, $2000.00000000 ETH/USD price
+    const priceDataFeedAddress = await priceDataFeed.getAddress();
+
+    const ChallengeFactory: Challenge__factory = await ethers.getContractFactory("Challenge", {
+      libraries: {
+        PriceDataFeed: priceDataFeedAddress
+      },
+    });
+    [owner, bettor, bettor2, challenger] = await ethers.getSigners();
+
+
     maximumNumberOfBettorsPerChallenge = BigInt(100);
     maximumChallengeLengthInSeconds = BigInt(2592000);
     maximumNumberOfChallengeMetrics = BigInt(3);
@@ -45,13 +55,19 @@ describe("Challenge Tests", () => {
         maximumChallengeLengthInSeconds,
         maximumNumberOfChallengeMetrics
       ],
-      { initializer: 'initialize' }
+      {
+        initializer: 'initialize',
+        unsafeAllow: ["external-library-linking"]
+      }
     );
     await challengeContract.waitForDeployment();
     const challengeContractAddress = await challengeContract.getAddress();
 
     const VaultFactory = await ethers.getContractFactory("Vault");
-    vaultContract = await upgrades.deployProxy(VaultFactory, [challengeContractAddress], { initializer: 'initialize' });
+    vaultContract = await upgrades.deployProxy(VaultFactory, [challengeContractAddress], {
+      initializer: 'initialize',
+      unsafeAllow: ["external-library-linking"]
+    });
     await vaultContract.waitForDeployment();
 
     await challengeContract.connect(owner).setVault(await vaultContract.getAddress());
@@ -390,8 +406,16 @@ describe("Challenge Tests", () => {
         const mockPriceFeedZero = await MockV3Aggregator.deploy(8, 0); // $0.00000000 ETH/USD price
         const mockPriceFeedZeroAddress = await mockPriceFeedZero.getAddress();
 
+        const PriceDataFeed = await ethers.getContractFactory("PriceDataFeed");
+        const priceDataFeed = await PriceDataFeed.deploy(); // 8 decimals, $2000.00000000 ETH/USD price
+        const priceDataFeedAddress = await priceDataFeed.getAddress();
+
         // Deploy a new challenge contract with the zero-price feed
-        const ChallengeFactory: Challenge__factory = await ethers.getContractFactory("Challenge");
+        const ChallengeFactory: Challenge__factory = await ethers.getContractFactory("Challenge", {
+          libraries: {
+            PriceDataFeed: priceDataFeedAddress
+          },
+        });
         const zeroPriceChallenge = await upgrades.deployProxy(
           ChallengeFactory,
           [
@@ -401,7 +425,10 @@ describe("Challenge Tests", () => {
             2592000, // maximumChallengeLengthInSeconds (30 days)
             3 // maximumNumberOfChallengeMetrics
           ],
-          { initializer: 'initialize' }
+          {
+            initializer: 'initialize',
+            unsafeAllow: ["external-library-linking"]
+          }
         );
 
         await zeroPriceChallenge.waitForDeployment();
@@ -409,7 +436,10 @@ describe("Challenge Tests", () => {
 
         // Set the vault
         const VaultFactory = await ethers.getContractFactory("Vault");
-        const vault = await upgrades.deployProxy(VaultFactory, [zeroPriceChallengeAddress], { initializer: 'initialize' });
+        const vault = await upgrades.deployProxy(VaultFactory, [zeroPriceChallengeAddress], {
+          initializer: 'initialize',
+          unsafeAllow: ["external-library-linking"]
+        });
         await vault.waitForDeployment();
         const vaultAddress = await vault.getAddress();
 
@@ -453,7 +483,16 @@ describe("Challenge Tests", () => {
         const mockPriceFeedAddress = await mockPriceFeed.getAddress();
 
         const maxBettors = 20; // Set to a reasonable number for testing - in production could be much higher
-        const ChallengeFactory = await ethers.getContractFactory("Challenge");
+
+        const PriceDataFeed = await ethers.getContractFactory("PriceDataFeed");
+        const priceDataFeed = await PriceDataFeed.deploy(); // 8 decimals, $2000.00000000 ETH/USD price
+        const priceDataFeedAddress = await priceDataFeed.getAddress();
+
+        const ChallengeFactory = await ethers.getContractFactory("Challenge", {
+          libraries: {
+            PriceDataFeed: priceDataFeedAddress
+          },
+        });
         const manyBettorsChallenge = await upgrades.deployProxy(
           ChallengeFactory,
           [
@@ -463,14 +502,20 @@ describe("Challenge Tests", () => {
             2592000, // 30 days
             3 // max metrics
           ],
-          { initializer: 'initialize' }
+          {
+            initializer: 'initialize',
+            unsafeAllow: ["external-library-linking"]
+          }
         );
 
         await manyBettorsChallenge.waitForDeployment();
         const manyBettorsChallengeAddress = await manyBettorsChallenge.getAddress();
 
         const vaultFactory = await ethers.getContractFactory("Vault");
-        const vault = await upgrades.deployProxy(vaultFactory, [manyBettorsChallengeAddress], { initializer: 'initialize' });
+        const vault = await upgrades.deployProxy(vaultFactory, [manyBettorsChallengeAddress], {
+          initializer: 'initialize',
+          unsafeAllow: ["external-library-linking"]
+        });
         await vault.waitForDeployment();
         const vaultAddress = await vault.getAddress();
 
@@ -501,7 +546,7 @@ describe("Challenge Tests", () => {
         const bettorsAgainst = [];
         // Adding 17 bettors for the test, 8 betting for the challenger and 9 betting against the challenger
         // the total becomes 18 bettors, and the challenger is betting for himself
-        for (let i = 0; i < 17; i++) { 
+        for (let i = 0; i < 17; i++) {
           const newBettor = ethers.Wallet.createRandom().connect(ethers.provider);
 
           // Fund the bettor
@@ -544,7 +589,7 @@ describe("Challenge Tests", () => {
 
         // Check that winnings were marked as paid
         expect(await manyBettorsChallenge.challengeToWinningsPaid(challengeId)).to.be.greaterThan(0);
-        
+
         const eachGeneratedBettorWalletAmountAfterBetting = parseEther("1");
         const receivedAmountForSuccessfulBets = parseEther("2");
 

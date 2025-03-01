@@ -1,0 +1,9 @@
+optimism_package:
+  chains: 
+    - participants:
+          - el_type: op-geth 
+          - el_type: op-reth
+      network_params:
+        name: big-pen-15 
+        network_id: 69420 
+        

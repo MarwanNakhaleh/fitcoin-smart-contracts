@@ -4,6 +4,8 @@ pragma solidity ^0.8.22;
 import "./Challenge.sol";
 import "./interfaces/IMultiplayerChallenge.sol";
 
+import "./libraries/ChallengeData.sol";
+
 /**
  * @title MultiplayerChallenge
  * @notice An extension of Challenge that supports multiple competitors, each of whom can submit performance measurements.
@@ -13,6 +15,8 @@ import "./interfaces/IMultiplayerChallenge.sol";
  * and the leader is updated if they have a higher score.
  */
 contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
+    using ChallengeData for *;
+
     /// @notice Contract-level maximum allowed competitors per challenge.
     uint256 public maximumNumberOfChallengeCompetitors;
 
@@ -153,8 +157,8 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
         // Ensure the challenge is still inactive (i.e. has not started yet).
         super.placeBet(_challengeId, true);
 
-        if (challengeToChallengeStatus[_challengeId] != STATUS_INACTIVE) {
-            revert ChallengeIsActive(_challengeId);
+        if (challengeToChallengeStatus[_challengeId] != ChallengeData.STATUS_INACTIVE) {
+            revert ChallengeData.ChallengeIsActive(_challengeId);
         }
         // Ensure there is room for more competitors.
         if (
@@ -182,8 +186,8 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
     function leaveChallenge(
         uint256 _challengeId
     ) external virtual override(IMultiplayerChallenge) whenNotPaused {
-        if (challengeToChallengeStatus[_challengeId] != STATUS_INACTIVE) {
-            revert ChallengeIsActive(_challengeId);
+        if (challengeToChallengeStatus[_challengeId] != ChallengeData.STATUS_INACTIVE) {
+            revert ChallengeData.ChallengeIsActive(_challengeId);
         }
         if (challengeCompetitors[_challengeId].length == 1) {
             revert ChallengeHasOnlyOneCompetitor(_challengeId);
@@ -248,8 +252,8 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
             revert InvalidNumberOfMeasurements();
         }
 
-        if (challengeToChallengeStatus[_challengeId] != STATUS_ACTIVE) {
-            revert ChallengeIsNotActive(
+        if (challengeToChallengeStatus[_challengeId] != ChallengeData.STATUS_ACTIVE) {
+            revert ChallengeData.ChallengeIsNotActive(
                 _challengeId,
                 challengeToChallengeStatus[_challengeId]
             );
@@ -261,8 +265,8 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
             (challengeToStartTime[_challengeId] +
                 challengeToChallengeLength[_challengeId])
         ) {
-            challengeToChallengeStatus[_challengeId] = STATUS_EXPIRED;
-            revert ChallengeIsExpired(_challengeId);
+            challengeToChallengeStatus[_challengeId] = ChallengeData.STATUS_EXPIRED;
+            revert ChallengeData.ChallengeIsExpired(_challengeId);
         }
 
         challengeToCompetitorMeasurements[_challengeId][
@@ -301,7 +305,7 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
         onlyOwner
         whenNotPaused
     {
-        if (address(vault) == address(0)) revert VaultNotSet();
+        if (address(vault) == address(0)) revert ChallengeData.VaultNotSet();
 
         uint256 timestamp = block.timestamp;
         if (
@@ -309,14 +313,14 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
             (challengeToStartTime[_challengeId] +
                 challengeToChallengeLength[_challengeId])
         ) {
-            revert ChallengeIsActive(_challengeId);
+            revert ChallengeData.ChallengeIsActive(_challengeId);
         }
-        if (challengeToChallengeStatus[_challengeId] != STATUS_EXPIRED) {
-            challengeToChallengeStatus[_challengeId] = STATUS_EXPIRED;
+        if (challengeToChallengeStatus[_challengeId] != ChallengeData.STATUS_EXPIRED) {
+            challengeToChallengeStatus[_challengeId] = ChallengeData.STATUS_EXPIRED;
         }
 
         if (challengeToWinningsPaid[_challengeId] > 0)
-            revert WinningsAlreadyPaid(_challengeId);
+            revert ChallengeData.WinningsAlreadyPaid(_challengeId);
 
         address winner = challengeLeader[_challengeId];
         uint256 totalWinnings = challengeToTotalAmountBetFor[_challengeId];
@@ -377,8 +381,8 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
         uint256 _challengeId,
         address _competitor
     ) external view returns (uint256) {
-        if (challengeToChallengeStatus[_challengeId] != STATUS_INACTIVE) {
-            revert ChallengeNotYetStarted(_challengeId);
+        if (challengeToChallengeStatus[_challengeId] != ChallengeData.STATUS_INACTIVE) {
+            revert ChallengeData.ChallengeNotYetStarted(_challengeId);
         }
         if (!challengeHasCompetitor[_challengeId][_competitor]) {
             revert ChallengeCompetitorNotJoined(_challengeId, _competitor);
@@ -400,7 +404,7 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
         whenNotPaused
     {
         if (challengeToChallenger[_challengeId] != msg.sender) {
-            revert ChallengeCanOnlyBeModifiedByChallenger(
+            revert ChallengeData.ChallengeCanOnlyBeModifiedByChallenger(
                 _challengeId,
                 msg.sender,
                 challengeToChallenger[_challengeId]
@@ -409,7 +413,7 @@ contract MultiplayerChallenge is Challenge, IMultiplayerChallenge {
         if (challengeCompetitors[_challengeId].length < 2) {
             revert NotEnoughCompetitors();
         }
-        challengeToChallengeStatus[_challengeId] = STATUS_ACTIVE;
+        challengeToChallengeStatus[_challengeId] = ChallengeData.STATUS_ACTIVE;
         challengeToStartTime[_challengeId] = block.timestamp;
         challengerToActiveChallenge[msg.sender] = _challengeId;
         for (uint8 i = 0; i < challengeCompetitors[_challengeId].length; ) {

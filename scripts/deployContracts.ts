@@ -1,15 +1,8 @@
 import hre from "hardhat";
 import { ethers, upgrades } from "hardhat";
 import deployParams from "./params/deployParams.json";
-
-const baseChainId = 8453;
-const baseSepoliaChainId = 84532;
-const arbitrumChainId = 42161;
-const arbitrumSepoliaChainId = 421614;
-const optimismChainId = 10;
-const optimismSepoliaChainId = 11155420;
-const localhostChainId = 1337;
-const hardhatChainId = 31337;
+import { arbitrumSepoliaChainId, baseSepoliaChainId, hardhatChainId, optimismSepoliaChainId, baseChainId, arbitrumChainId, optimismChainId } from "../globals";
+import { localhostChainId } from "../globals";
 
 const deployFunc = async () => {
   // Determine the price feed address based on the network.
@@ -62,7 +55,10 @@ const deployFunc = async () => {
       maximumChallengeLengthInSeconds,
       maximumNumberOfChallengeMetrics
     ],
-    { initializer: "initialize" }
+    { 
+      initializer: "initialize",
+      unsafeAllow: ["external-library-linking"]
+     }
   );
   await challengeContract.waitForDeployment();
   const challengeContractAddress = await challengeContract.getAddress();
@@ -73,7 +69,10 @@ const deployFunc = async () => {
   const vaultContract = await upgrades.deployProxy(
     VaultFactory,
     [challengeContractAddress],
-    { initializer: "initialize" }
+    { 
+      initializer: "initialize",
+      unsafeAllow: ["external-library-linking"]
+     }
   );
   await vaultContract.waitForDeployment();
   const vaultContractAddress = await vaultContract.getAddress();
@@ -98,7 +97,10 @@ const deployFunc = async () => {
       maximumChallengeLengthInSeconds,
       maximumNumberOfChallengeMetrics
     ],
-    { initializer: "initializeMultiplayerChallenge" }
+    { 
+      initializer: "initializeMultiplayerChallenge",
+      unsafeAllow: ["external-library-linking"]
+     }
   );
   await multiplayerChallengeContract.waitForDeployment();
   const multiplayerChallengeContractAddress = await multiplayerChallengeContract.getAddress();
